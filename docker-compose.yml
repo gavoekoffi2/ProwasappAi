@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      APP_URL: ${APP_URL}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      LLM_MODEL: ${LLM_MODEL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      AI_TEMPERATURE: ${AI_TEMPERATURE}
+      AI_MAX_TOKENS: ${AI_MAX_TOKENS}
+      AI_CONTEXT_TURNS: ${AI_CONTEXT_TURNS}
+      AI_RAG_TOP_K: ${AI_RAG_TOP_K}
+      AI_CONFIDENCE_THRESHOLD: ${AI_CONFIDENCE_THRESHOLD}
+      STT_PROVIDER: ${STT_PROVIDER}
+      STT_MODEL: ${STT_MODEL}
+      TTS_PROVIDER: ${TTS_PROVIDER}
+      TTS_MODEL: ${TTS_MODEL}
+      TTS_VOICE: ${TTS_VOICE}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      WA_SESSIONS_DIR: ${WA_SESSIONS_DIR}
+      BILLING_PROVIDER: ${BILLING_PROVIDER}
+      PLAN_STARTER_MSG_LIMIT: ${PLAN_STARTER_MSG_LIMIT}
+      PLAN_PRO_MSG_LIMIT: ${PLAN_PRO_MSG_LIMIT}
+      PLAN_BUSINESS_MSG_LIMIT: ${PLAN_BUSINESS_MSG_LIMIT}
+    volumes:
+      - wa_sessions:/app/wa_sessions
+      - uploads:/app/uploads
+    ports:
+      - "4000:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  redisdata:
+  wa_sessions:
+  uploads:

@@ -1,0 +1,258 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  ProwasappAI — Prisma schema
+//  Multi-tenant WhatsApp AI SaaS. Every business = one Tenant, every row in
+//  every other table is scoped by tenantId.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ─────────────── Users & tenants ───────────────
+
+enum UserRole {
+  owner
+  admin
+  agent
+}
+
+enum Industry {
+  ecommerce
+  realestate
+  services
+  other
+}
+
+model Tenant {
+  id         String   @id @default(cuid())
+  name       String
+  industry   Industry @default(other)
+  locale     String   @default("fr")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users         User[]
+  subscription  Subscription?
+  usage         UsageCounter[]
+  sessions      WhatsappSession[]
+  conversations Conversation[]
+  documents     KnowledgeDocument[]
+  aiConfig      AiConfig?
+
+  @@index([createdAt])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(owner)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ─────────────── Billing / usage ───────────────
+
+enum Plan {
+  starter
+  pro
+  business
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+}
+
+model Subscription {
+  id               String             @id @default(cuid())
+  tenantId         String             @unique
+  plan             Plan               @default(starter)
+  status           SubscriptionStatus @default(trialing)
+  trialEndsAt      DateTime?
+  currentPeriodEnd DateTime?
+  externalId       String?
+  provider         String             @default("manual")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// One counter per (tenant, YYYY-MM). Upserted on every message.
+model UsageCounter {
+  id         String @id @default(cuid())
+  tenantId   String
+  period     String // "2026-04"
+  messagesIn Int    @default(0)
+  messagesOut Int   @default(0)
+  aiReplies  Int    @default(0)
+  sttSeconds Int    @default(0)
+  ttsChars   Int    @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, period])
+  @@index([tenantId])
+}
+
+// ─────────────── AI configuration ───────────────
+
+model AiConfig {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique
+  systemPrompt       String   @default("")
+  tone               String   @default("friendly")
+  language           String   @default("fr")
+  voiceReply         Boolean  @default(false)
+  fallbackMessage    String   @default("Un agent va vous répondre sous peu.")
+  confidenceFallback Float    @default(0.55)
+  enabled            Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────── WhatsApp sessions ───────────────
+
+enum WhatsappSessionStatus {
+  pending
+  qr
+  connecting
+  connected
+  disconnected
+  error
+}
+
+model WhatsappSession {
+  id        String                @id @default(cuid())
+  tenantId  String
+  label     String                @default("Main")
+  phone     String?
+  status    WhatsappSessionStatus @default(pending)
+  lastQr    String?
+  lastError String?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@index([tenantId])
+}
+
+// ─────────────── Conversations & messages ───────────────
+
+enum ConversationMode {
+  ai
+  human
+}
+
+model Conversation {
+  id         String           @id @default(cuid())
+  tenantId   String
+  sessionId  String
+  remoteJid  String
+  displayName String?
+  mode       ConversationMode @default(ai)
+  lastAt     DateTime         @default(now())
+  unread     Int              @default(0)
+  createdAt  DateTime         @default(now())
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  session  WhatsappSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([sessionId, remoteJid])
+  @@index([tenantId, lastAt])
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageType {
+  text
+  audio
+  image
+  document
+  system
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  tenantId       String
+  conversationId String
+  direction      MessageDirection
+  type           MessageType      @default(text)
+  text           String?
+  mediaUrl       String?
+  transcription  String?
+  aiGenerated    Boolean          @default(false)
+  waMessageId    String?
+  createdAt      DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+// ─────────────── Knowledge base (RAG) ───────────────
+
+enum DocumentStatus {
+  pending
+  processing
+  ready
+  failed
+}
+
+model KnowledgeDocument {
+  id        String         @id @default(cuid())
+  tenantId  String
+  name      String
+  mimeType  String
+  sizeBytes Int
+  status    DocumentStatus @default(pending)
+  error     String?
+  createdAt DateTime       @default(now())
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chunks KnowledgeChunk[]
+
+  @@index([tenantId])
+}
+
+// NOTE: the `embedding` column is added as a `vector(1536)` in the initial
+// migration (see prisma/migrations). Prisma Client treats it as `Unsupported`
+// and we query it with raw SQL.
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  tenantId   String
+  documentId String
+  position   Int
+  content    String
+  // embedding  vector(1536)        ← managed by raw SQL
+  createdAt  DateTime @default(now())
+
+  document KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([documentId])
+}
