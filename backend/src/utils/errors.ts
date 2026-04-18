@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
+import { MulterError } from "multer";
 import { logger } from "../config/logger";
 
 export class HttpError extends Error {
@@ -24,6 +25,10 @@ export function errorHandler(
 ) {
   if (err instanceof ZodError) {
     return res.status(400).json({ error: "ValidationError", details: err.flatten() });
+  }
+  if (err instanceof MulterError) {
+    // e.g. LIMIT_FILE_SIZE when upload exceeds UPLOAD_MAX_MB.
+    return res.status(400).json({ error: err.code, message: err.message });
   }
   if (err instanceof HttpError) {
     return res.status(err.status).json({ error: err.message, details: err.details });
