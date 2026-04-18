@@ -1,8 +1,9 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import morgan from "morgan";
-import { env } from "./config/env";
+import pinoHttp from "pino-http";
+import rateLimit from "express-rate-limit";
+import { corsOrigins, env } from "./config/env";
 import { logger } from "./config/logger";
 import { errorHandler } from "./utils/errors";
 import { authRouter } from "./modules/auth/auth.routes";
@@ -19,15 +20,58 @@ import { prisma } from "./config/prisma";
 async function main() {
   const app = express();
 
+  if (env.TRUST_PROXY) app.set("trust proxy", 1);
+  app.disable("x-powered-by");
+
   app.use(helmet());
-  app.use(cors({ origin: env.APP_URL, credentials: true }));
+  const allowed = corsOrigins();
+  app.use(
+    cors({
+      origin(origin, cb) {
+        // Allow same-origin / tools (no Origin header) and any listed origin.
+        if (!origin) return cb(null, true);
+        if (allowed.includes("*") || allowed.includes(origin)) return cb(null, true);
+        cb(new Error(`CORS: origin ${origin} not allowed`));
+      },
+      credentials: true,
+    }),
+  );
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
-  app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
+  app.use(
+    pinoHttp({
+      logger,
+      customLogLevel: (_req, res, err) => {
+        if (err || res.statusCode >= 500) return "error";
+        if (res.statusCode >= 400) return "warn";
+        return "info";
+      },
+      // Don't log the Authorization header.
+      redact: { paths: ['req.headers.authorization', 'req.headers.cookie'], remove: true },
+    }),
+  );
 
+  // Basic health probes.
   app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+  app.get("/health/db", async (_req, res) => {
+    try {
+      await prisma.$queryRawUnsafe("SELECT 1");
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(503).json({ ok: false, error: (err as Error).message });
+    }
+  });
 
-  app.use("/api/v1/auth", authRouter);
+  // Rate-limit auth routes to slow down credential stuffing.
+  const authLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: env.AUTH_RATE_LIMIT_PER_MIN,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many requests, slow down." },
+  });
+
+  app.use("/api/v1/auth", authLimiter, authRouter);
   app.use("/api/v1/tenant", tenantRouter);
   app.use("/api/v1/ai-config", aiConfigRouter);
   app.use("/api/v1/whatsapp", whatsappRouter);
@@ -35,6 +79,7 @@ async function main() {
   app.use("/api/v1/knowledge", knowledgeRouter);
   app.use("/api/v1/billing", billingRouter);
 
+  app.use((_req, res) => res.status(404).json({ error: "NotFound" }));
   app.use(errorHandler);
 
   // Start the inbound pipeline and resurrect any connected sessions.
@@ -42,7 +87,7 @@ async function main() {
   resumeSessions().catch((err) => logger.error({ err }, "resumeSessions failed"));
 
   const server = app.listen(env.PORT, () => {
-    logger.info(`🚀 API listening on :${env.PORT}`);
+    logger.info({ port: env.PORT, provider: env.LLM_PROVIDER }, "🚀 API started");
   });
 
   const shutdown = async (signal: string) => {
@@ -58,8 +103,10 @@ async function main() {
 // On boot, try to reconnect sessions that were previously connected.
 // Baileys' multi-file auth state survives restarts, so this is safe.
 async function resumeSessions() {
+  // Resume anything that wasn't explicitly logged-out. "pending" is included
+  // so a session created moments before a restart still gets bootstrapped.
   const sessions = await prisma.whatsappSession.findMany({
-    where: { status: { in: ["connected", "connecting", "qr"] } },
+    where: { status: { in: ["pending", "connected", "connecting", "qr", "disconnected"] } },
   });
   for (const s of sessions) {
     whatsapp.start(s.id, s.tenantId).catch((err) =>

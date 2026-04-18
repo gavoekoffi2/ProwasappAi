@@ -1,13 +1,18 @@
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
-import pdfParse from "pdf-parse";
+// Import pdf-parse from its internal entry to avoid its index.js debug hack
+// that tries to read a demo PDF at require-time when `module.parent` is null.
+// See https://gitlab.com/autokent/pdf-parse/-/issues/24.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse/lib/pdf-parse.js");
 import { prisma } from "../../config/prisma";
 import { logger } from "../../config/logger";
 import { embedMany } from "../ai/llm";
 
-const CHUNK_SIZE = 800;       // characters
+const CHUNK_SIZE = 800;        // characters
 const CHUNK_OVERLAP = 120;
+const INSERT_BATCH = 100;      // chunks per transaction batch
 
 export async function extractText(buf: Buffer, mimeType: string): Promise<string> {
   if (mimeType === "application/pdf") {
@@ -16,6 +21,11 @@ export async function extractText(buf: Buffer, mimeType: string): Promise<string
   }
   if (mimeType.startsWith("text/") || mimeType === "application/json") {
     return buf.toString("utf8");
+  }
+  // Heuristic fallback for files uploaded with the wrong mime type.
+  if (buf.slice(0, 4).toString() === "%PDF") {
+    const r = await pdfParse(buf);
+    return r.text ?? "";
   }
   return buf.toString("utf8");
 }
@@ -44,6 +54,7 @@ export function chunk(text: string): string[] {
 }
 
 function newId() {
+  // CUID-ish random id. Collisions practically impossible at our scale.
   return "c" + crypto.randomBytes(12).toString("hex");
 }
 
@@ -67,19 +78,35 @@ export async function ingestDocument(documentId: string) {
 
     const vectors = await embedMany(parts);
 
+    // Wipe any previous chunks for this doc and bulk-insert new ones.
     await prisma.$transaction(async (tx) => {
       await tx.knowledgeChunk.deleteMany({ where: { documentId: doc.id } });
-      for (let j = 0; j < parts.length; j++) {
+
+      for (let start = 0; start < parts.length; start += INSERT_BATCH) {
+        const slice = parts.slice(start, start + INSERT_BATCH);
+        const vslice = vectors.slice(start, start + INSERT_BATCH);
+
+        const rows = slice.map((_, j) => {
+          const b = j * 6;
+          return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}::vector)`;
+        });
+        const params: unknown[] = [];
+        slice.forEach((content, j) => {
+          params.push(
+            newId(),
+            doc.tenantId,
+            doc.id,
+            start + j,
+            content,
+            `[${vslice[j].join(",")}]`,
+          );
+        });
+
         await tx.$executeRawUnsafe(
           `INSERT INTO "KnowledgeChunk"
              (id, "tenantId", "documentId", position, content, embedding)
-           VALUES ($1, $2, $3, $4, $5, $6::vector)`,
-          newId(),
-          doc.tenantId,
-          doc.id,
-          j,
-          parts[j],
-          `[${vectors[j].join(",")}]`,
+           VALUES ${rows.join(", ")}`,
+          ...params,
         );
       }
     });
@@ -88,6 +115,7 @@ export async function ingestDocument(documentId: string) {
       where: { id: doc.id },
       data: { status: "ready" },
     });
+    logger.info({ documentId, chunks: parts.length }, "document ingested");
   } catch (err) {
     logger.error({ err, documentId }, "ingest failed");
     await prisma.knowledgeDocument.update({

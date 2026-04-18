@@ -22,6 +22,16 @@ export class ApiError extends Error {
   }
 }
 
+function handleUnauthorized() {
+  if (typeof window === "undefined") return;
+  clearToken();
+  // Avoid redirect loops on the auth pages themselves.
+  const p = window.location.pathname;
+  if (p !== "/login" && p !== "/register") {
+    window.location.href = "/login";
+  }
+}
+
 export async function api<T = unknown>(
   path: string,
   options: RequestInit & { auth?: boolean } = {},
@@ -40,10 +50,13 @@ export async function api<T = unknown>(
   try {
     body = await res.json();
   } catch {
-    /* some endpoints return empty bodies */
+    /* empty body */
+  }
+  if (res.status === 401 && auth) {
+    handleUnauthorized();
   }
   if (!res.ok) {
-    throw new ApiError(res.status, body, (body as any)?.error ?? res.statusText);
+    throw new ApiError(res.status, body, (body as { error?: string })?.error ?? res.statusText);
   }
   return body as T;
 }
@@ -56,16 +69,11 @@ export async function apiUpload<T = unknown>(path: string, formData: FormData): 
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
   const body = await res.json().catch(() => null);
+  if (res.status === 401) handleUnauthorized();
   if (!res.ok) throw new ApiError(res.status, body);
   return body as T;
 }
 
 export function apiUrl(path: string) {
   return `${API_URL}/api/v1${path}`;
-}
-
-export function sseUrl(path: string) {
-  const token = getToken();
-  const sep = path.includes("?") ? "&" : "?";
-  return `${API_URL}/api/v1${path}${sep}access_token=${encodeURIComponent(token ?? "")}`;
 }

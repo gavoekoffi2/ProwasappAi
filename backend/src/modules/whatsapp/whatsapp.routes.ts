@@ -1,8 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
+import path from "path";
+import fs from "fs/promises";
 import QRCode from "qrcode";
 import { prisma } from "../../config/prisma";
 import { redisSub } from "../../config/redis";
+import { env } from "../../config/env";
 import { requireAuth } from "../../middleware/auth";
 import { tenantScope } from "../../middleware/tenantScope";
 import { asyncHandler, notFound } from "../../utils/errors";
@@ -49,6 +52,10 @@ whatsappRouter.delete(
     if (!session) throw notFound();
     await whatsapp.stop(session.id).catch(() => {});
     await prisma.whatsappSession.delete({ where: { id: session.id } });
+    // Wipe Baileys auth state so nothing lingers on disk.
+    await fs
+      .rm(path.join(env.WA_SESSIONS_DIR, session.id), { recursive: true, force: true })
+      .catch(() => {});
     res.json({ ok: true });
   }),
 );

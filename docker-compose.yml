@@ -26,6 +26,11 @@ services:
       - redisdata:/data
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   backend:
     build: ./backend
@@ -34,17 +39,23 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
       APP_URL: ${APP_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      TRUST_PROXY: ${TRUST_PROXY}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      AUTH_RATE_LIMIT_PER_MIN: ${AUTH_RATE_LIMIT_PER_MIN}
+      LLM_PROVIDER: ${LLM_PROVIDER}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_MODELS_BASE_URL: ${GITHUB_MODELS_BASE_URL}
       LLM_MODEL: ${LLM_MODEL}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL}
       AI_TEMPERATURE: ${AI_TEMPERATURE}
@@ -63,11 +74,22 @@ services:
       PLAN_STARTER_MSG_LIMIT: ${PLAN_STARTER_MSG_LIMIT}
       PLAN_PRO_MSG_LIMIT: ${PLAN_PRO_MSG_LIMIT}
       PLAN_BUSINESS_MSG_LIMIT: ${PLAN_BUSINESS_MSG_LIMIT}
+      UPLOAD_MAX_MB: ${UPLOAD_MAX_MB}
     volumes:
       - wa_sessions:/app/wa_sessions
       - uploads:/app/uploads
     ports:
       - "4000:4000"
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
@@ -76,7 +98,8 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     ports:

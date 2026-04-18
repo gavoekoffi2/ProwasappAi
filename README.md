@@ -121,10 +121,34 @@ ProwasappAi/
 
 ```bash
 cp .env.example .env
-# Edit .env — at minimum set OPENAI_API_KEY, JWT_SECRET, POSTGRES_PASSWORD.
+# Edit .env — at minimum set JWT_SECRET, POSTGRES_PASSWORD, and an LLM provider
+# (OPENAI_API_KEY, or LLM_PROVIDER=github-models + GITHUB_TOKEN).
 
 docker compose up --build
 ```
+
+### Using GitHub Models (free tier) as the LLM
+
+GitHub ships an OpenAI-compatible inference endpoint
+([docs](https://docs.github.com/github-models)). To use it:
+
+```env
+LLM_PROVIDER=github-models
+GITHUB_TOKEN=ghp_...          # fine-grained PAT with models:read
+GITHUB_MODELS_BASE_URL=https://models.github.ai/inference
+LLM_MODEL=gpt-4o-mini         # or any model in the GH Models catalog
+EMBEDDING_MODEL=text-embedding-3-small
+```
+
+No other changes needed — the backend routes chat/embeddings/STT/TTS calls
+through the OpenAI SDK against that base URL. Note: GitHub Models currently
+does **not** expose Whisper/TTS, so set `STT_PROVIDER=local` and
+`TTS_PROVIDER=none` if you rely solely on GH Models (or keep `OPENAI_API_KEY`
+set in parallel for voice).
+
+> ⚠️ Never commit your GitHub PAT. Put it in `.env` only. If you paste one
+> into a chat, revoke it on github.com → Settings → Developer settings.
+
 
 - Dashboard → http://localhost:3000
 - API       → http://localhost:4000
