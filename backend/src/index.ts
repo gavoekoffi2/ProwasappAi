@@ -16,6 +16,7 @@ import { billingRouter } from "./modules/billing/billing.routes";
 import { startInboundWorker } from "./services/whatsapp/inboundWorker";
 import { whatsapp } from "./services/whatsapp/sessionManager";
 import { prisma } from "./config/prisma";
+import { redis } from "./config/redis";
 
 async function main() {
   const app = express();
@@ -61,6 +62,28 @@ async function main() {
       res.status(503).json({ ok: false, error: (err as Error).message });
     }
   });
+  app.get("/health/ready", async (_req, res) => {
+    const checks = {
+      db: false,
+      redis: false,
+      llmConfigured:
+        env.LLM_PROVIDER === "github-models"
+          ? Boolean(env.GITHUB_TOKEN)
+          : env.LLM_PROVIDER === "local"
+            ? true
+            : Boolean(env.OPENAI_API_KEY),
+    };
+
+    await prisma.$queryRawUnsafe("SELECT 1").then(() => {
+      checks.db = true;
+    }).catch(() => {});
+    await redis.ping().then(() => {
+      checks.redis = true;
+    }).catch(() => {});
+
+    const ok = checks.db && checks.redis && (env.NODE_ENV !== "production" || checks.llmConfigured);
+    res.status(ok ? 200 : 503).json({ ok, checks });
+  });
 
   // Rate-limit auth routes to slow down credential stuffing.
   const authLimiter = rateLimit({
@@ -94,6 +117,7 @@ async function main() {
     logger.info({ signal }, "shutting down");
     server.close();
     await prisma.$disconnect().catch(() => {});
+    await redis.quit().catch(() => {});
     process.exit(0);
   };
   process.on("SIGINT", () => shutdown("SIGINT"));

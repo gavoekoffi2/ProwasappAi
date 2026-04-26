@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../config/prisma";
-import { requireAuth } from "../../middleware/auth";
+import { requireAuth, requireRole } from "../../middleware/auth";
 import { tenantScope } from "../../middleware/tenantScope";
 import { asyncHandler, notFound } from "../../utils/errors";
 
@@ -29,6 +29,7 @@ const updateSchema = z.object({
 
 tenantRouter.patch(
   "/",
+  requireRole("owner", "admin"),
   asyncHandler(async (req, res) => {
     const body = updateSchema.parse(req.body);
     const tenant = await prisma.tenant.update({

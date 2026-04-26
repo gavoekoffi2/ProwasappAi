@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../config/prisma";
-import { requireAuth } from "../../middleware/auth";
+import { requireAuth, requireRole } from "../../middleware/auth";
 import { tenantScope } from "../../middleware/tenantScope";
 import { asyncHandler } from "../../utils/errors";
 
@@ -33,6 +33,7 @@ const updateSchema = z.object({
 
 aiConfigRouter.put(
   "/",
+  requireRole("owner", "admin"),
   asyncHandler(async (req, res) => {
     const body = updateSchema.parse(req.body);
     const cfg = await prisma.aiConfig.upsert({

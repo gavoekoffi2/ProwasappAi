@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
+const isStaticExport = process.env.STATIC_EXPORT === "true";
+
 module.exports = {
   reactStrictMode: true,
-  output: "standalone",
+  output: isStaticExport ? "export" : "standalone",
 };

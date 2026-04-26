@@ -12,12 +12,135 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition;
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition;
   }
   .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50; }
   .btn-secondary { @apply btn bg-white border border-slate-200 hover:bg-slate-100; }
   .input {
     @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-200;
   }
-  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+  .card { @apply rounded-lg border border-slate-200 bg-white shadow-sm; }
+}
+
+@layer utilities {
+  .phone-scene {
+    perspective: 1200px;
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .phone-shell {
+    width: min(320px, 72vw);
+    aspect-ratio: 9 / 18.5;
+    border-radius: 42px;
+    padding: 14px;
+    background:
+      linear-gradient(145deg, #f8fafc, #1f2937 34%, #020617 70%),
+      #0f172a;
+    box-shadow:
+      0 44px 90px rgba(2, 6, 23, 0.44),
+      inset 0 0 0 1px rgba(255,255,255,0.2);
+    transform: rotateY(-16deg) rotateX(7deg) rotateZ(-3deg);
+    animation: phone-drift 7s ease-in-out infinite;
+  }
+
+  .phone-screen {
+    height: 100%;
+    overflow: hidden;
+    border-radius: 32px;
+    background:
+      radial-gradient(circle at 20% 0%, rgba(16, 185, 129, 0.18), transparent 32%),
+      linear-gradient(180deg, #f8fafc, #ecfdf5);
+    border: 1px solid rgba(255,255,255,0.26);
+  }
+
+  .phone-topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 54px;
+    padding: 0 18px;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(12px);
+  }
+
+  .chat-line {
+    width: 78%;
+    border-radius: 16px;
+    padding: 11px 13px;
+    font-size: 12px;
+    line-height: 1.45;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    animation: message-pop 5.5s ease-in-out infinite;
+  }
+
+  .animation-delay {
+    animation-delay: 1.15s;
+  }
+
+  .feature-card {
+    transform: translateY(0);
+    transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-6px);
+    border-color: rgba(16, 185, 129, 0.35);
+    box-shadow: 0 22px 50px rgba(15, 23, 42, 0.1);
+  }
+
+  .animate-float {
+    animation: float-card 5s ease-in-out infinite;
+  }
+
+  .animate-float-slow {
+    animation: float-card 6.5s ease-in-out infinite;
+  }
+
+  .voice-wave {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.13);
+    padding: 18px;
+  }
+
+  .voice-wave span {
+    width: 8px;
+    height: 22px;
+    border-radius: 999px;
+    background: #fbbf24;
+    animation: wave 900ms ease-in-out infinite;
+  }
+
+  .voice-wave span:nth-child(2) { animation-delay: 90ms; height: 34px; }
+  .voice-wave span:nth-child(3) { animation-delay: 180ms; height: 48px; }
+  .voice-wave span:nth-child(4) { animation-delay: 270ms; height: 28px; }
+  .voice-wave span:nth-child(5) { animation-delay: 360ms; height: 42px; }
+  .voice-wave span:nth-child(6) { animation-delay: 450ms; height: 24px; }
+  .voice-wave span:nth-child(7) { animation-delay: 540ms; height: 36px; }
+}
+
+@keyframes phone-drift {
+  0%, 100% { transform: rotateY(-16deg) rotateX(7deg) rotateZ(-3deg) translateY(0); }
+  50% { transform: rotateY(-10deg) rotateX(5deg) rotateZ(2deg) translateY(-16px); }
+}
+
+@keyframes message-pop {
+  0%, 100% { transform: translateY(0) scale(1); }
+  45% { transform: translateY(-3px) scale(1.012); }
+}
+
+@keyframes float-card {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes wave {
+  0%, 100% { transform: scaleY(0.72); opacity: 0.66; }
+  50% { transform: scaleY(1.18); opacity: 1; }
 }

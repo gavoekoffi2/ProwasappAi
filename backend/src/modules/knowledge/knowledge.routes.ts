@@ -22,11 +22,6 @@ const ALLOWED_MIME = new Set([
 ]);
 const ALLOWED_EXT = new Set([".pdf", ".txt", ".md"]);
 
-// Per-tenant cap on total KB storage (sum of sizeBytes across docs).
-// Starter-tier users uploading 50 MB of PDFs will already dwarf their
-// monthly AI spend — cap it so a single tenant can't exhaust the disk.
-const TENANT_STORAGE_MAX_MB = 200;
-
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: env.UPLOAD_MAX_MB * 1024 * 1024 },
@@ -63,10 +58,10 @@ knowledgeRouter.post(
       _sum: { sizeBytes: true },
     });
     const usedBytes = Number(agg._sum.sizeBytes ?? 0);
-    const maxBytes = TENANT_STORAGE_MAX_MB * 1024 * 1024;
+    const maxBytes = env.TENANT_STORAGE_MAX_MB * 1024 * 1024;
     if (usedBytes + file.size > maxBytes) {
       throw badRequest(
-        `Quota de stockage atteint (${TENANT_STORAGE_MAX_MB} MB). Supprimez des documents.`,
+        `Quota de stockage atteint (${env.TENANT_STORAGE_MAX_MB} MB). Supprimez des documents.`,
       );
     }
 

@@ -1,7 +1,8 @@
 import "dotenv/config";
 import { z } from "zod";
 
-const schema = z.object({
+const schema = z
+  .object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
   APP_URL: z.string().default("http://localhost:3000"),
@@ -56,7 +57,46 @@ const schema = z.object({
   // ── Rate limits / limits ────────────────────────────────────────────────
   AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().default(20),
   UPLOAD_MAX_MB: z.coerce.number().default(20),
-});
+  TENANT_STORAGE_MAX_MB: z.coerce.number().default(200),
+})
+  .superRefine((value, ctx) => {
+    if (value.NODE_ENV !== "production") return;
+
+    if (
+      value.JWT_SECRET === "replace-with-a-long-random-string" ||
+      value.JWT_SECRET.toLowerCase().includes("change-me")
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["JWT_SECRET"],
+        message: "JWT_SECRET must be a real production secret",
+      });
+    }
+
+    if (value.APP_URL.includes("localhost")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["APP_URL"],
+        message: "APP_URL must be the public production dashboard URL",
+      });
+    }
+
+    if (value.LLM_PROVIDER === "github-models" && !value.GITHUB_TOKEN) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["GITHUB_TOKEN"],
+        message: "GITHUB_TOKEN is required when LLM_PROVIDER=github-models",
+      });
+    }
+
+    if (value.LLM_PROVIDER !== "github-models" && value.LLM_PROVIDER !== "local" && !value.OPENAI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["OPENAI_API_KEY"],
+        message: "OPENAI_API_KEY is required for this LLM provider in production",
+      });
+    }
+  });
 
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
