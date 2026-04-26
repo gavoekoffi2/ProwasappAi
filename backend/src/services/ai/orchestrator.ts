@@ -50,7 +50,7 @@ export async function handleConversation(
   const history: ChatMessage[] = recent
     .reverse()
     .map((m) => ({
-      role: m.direction === "inbound" ? "user" : "assistant",
+      role: (m.direction === "inbound" ? "user" : "assistant") as ChatMessage["role"],
       content: m.transcription ?? m.text ?? "",
     }))
     .filter((m) => m.content);
