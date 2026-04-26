@@ -5,5 +5,5 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  NEXT_PUBLIC_API_URL = "https://api.prowasappai.example.com"
+  NEXT_PUBLIC_API_URL = "https://prowasappai-backend-test-59736.onrender.com"
   NETLIFY_NEXT_SKEW_PROTECTION = "true"
