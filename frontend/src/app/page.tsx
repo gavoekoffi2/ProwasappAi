@@ -104,6 +104,39 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="bg-slate-950 py-20 text-white">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 px-5 md:grid-cols-[0.88fr_1.12fr] md:px-8">
+          <div>
+            <p className="text-sm font-bold uppercase text-emerald-300">Vidéo de lancement</p>
+            <h2 className="mt-3 text-4xl font-black tracking-normal md:text-5xl">
+              Voyez ProwasappAI transformer une conversation WhatsApp en vente.
+            </h2>
+            <p className="mt-5 text-lg leading-8 text-slate-300">
+              Une démonstration courte pour comprendre le parcours : message client, réponse IA,
+              base de connaissances, supervision et passage à l'humain.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <a href="/videos/prowasappai-promo.mp4" download className="btn-primary px-6 py-3 text-base">
+                Télécharger la vidéo
+              </a>
+              <Link href="/register" className="btn-secondary border-white/15 bg-white/[0.08] px-6 py-3 text-base text-white hover:bg-white/[0.14]">
+                Tester la plateforme
+              </Link>
+            </div>
+          </div>
+          <div className="relative mx-auto w-full max-w-[430px] overflow-hidden rounded-lg border border-white/12 bg-black shadow-2xl shadow-emerald-950/30">
+            <video
+              className="aspect-[9/16] w-full object-cover"
+              src="/videos/prowasappai-promo.mp4"
+              poster="/videos/prowasappai-promo-cover.png"
+              controls
+              playsInline
+              preload="metadata"
+            />
+          </div>
+        </div>
+      </section>
+
       <section className="mx-auto max-w-7xl px-5 py-16 md:px-8">
         <div className="grid gap-4 md:grid-cols-4">
           {features.map((feature) => (
