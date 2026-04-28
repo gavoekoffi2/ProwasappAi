@@ -1,5 +1,6 @@
 import {
   AbsoluteFill,
+  Audio,
   Img,
   Sequence,
   interpolate,
@@ -22,6 +23,8 @@ const scenes = [
 export const PromoVideo = () => {
   return (
     <AbsoluteFill className="promo">
+      <Audio src={staticFile("/audio/prowasappai-background.wav")} volume={0.16} />
+      <Audio src={staticFile("/audio/prowasappai-voiceover.mp3")} volume={1} startFrom={0} />
       <AnimatedBackdrop />
       <Sequence from={scenes[0].from} durationInFrames={scenes[0].duration}>
         <HeroScene />

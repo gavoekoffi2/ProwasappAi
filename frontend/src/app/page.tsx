@@ -116,7 +116,7 @@ export default function HomePage() {
               base de connaissances, supervision et passage à l'humain.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <a href="/videos/prowasappai-promo.mp4" download className="btn-primary px-6 py-3 text-base">
+              <a href="/videos/prowasappai-promo-with-audio.mp4" download className="btn-primary px-6 py-3 text-base">
                 Télécharger la vidéo
               </a>
               <Link href="/register" className="btn-secondary border-white/15 bg-white/[0.08] px-6 py-3 text-base text-white hover:bg-white/[0.14]">
@@ -127,7 +127,7 @@ export default function HomePage() {
           <div className="relative mx-auto w-full max-w-[430px] overflow-hidden rounded-lg border border-white/12 bg-black shadow-2xl shadow-emerald-950/30">
             <video
               className="aspect-[9/16] w-full object-cover"
-              src="/videos/prowasappai-promo.mp4"
+              src="/videos/prowasappai-promo-with-audio.mp4"
               poster="/videos/prowasappai-promo-cover.png"
               controls
               playsInline
