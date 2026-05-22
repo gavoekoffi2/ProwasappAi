@@ -49,7 +49,7 @@ export async function handleConversation(
   });
   const history: ChatMessage[] = recent
     .reverse()
-    .map((m) => ({
+    .map<ChatMessage>((m) => ({
       role: m.direction === "inbound" ? "user" : "assistant",
       content: m.transcription ?? m.text ?? "",
     }))

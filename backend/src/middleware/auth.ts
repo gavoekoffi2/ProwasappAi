@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 import { env } from "../config/env";
 import { unauthorized } from "../utils/errors";
 
@@ -19,7 +19,9 @@ declare global {
 }
 
 export function signToken(payload: AuthPayload) {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
+  return jwt.sign(payload, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRES_IN as SignOptions["expiresIn"],
+  });
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {

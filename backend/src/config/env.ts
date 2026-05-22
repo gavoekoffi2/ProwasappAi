@@ -35,8 +35,24 @@ const schema = z.object({
   AI_CONFIDENCE_THRESHOLD: z.coerce.number().default(0.55),
 
   // ── Voice ────────────────────────────────────────────────────────────────
+  // STT_PROVIDER kept for backward compat; the actual chain tries all
+  // configured providers in order: Groq → OpenAI → local whisper.cpp HTTP.
   STT_PROVIDER: z.enum(["openai", "local"]).default("openai"),
   STT_MODEL: z.string().default("whisper-1"),
+  // Groq's Whisper endpoint (free tier, OpenAI-compatible).
+  // https://console.groq.com — model: whisper-large-v3-turbo or whisper-large-v3
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_BASE_URL: z.string().default("https://api.groq.com/openai/v1"),
+  GROQ_STT_MODEL: z.string().default("whisper-large-v3-turbo"),
+  // Local whisper.cpp / faster-whisper-server (OpenAI-compatible HTTP).
+  // https://github.com/fedirz/faster-whisper-server
+  STT_LOCAL_URL: z.string().optional(),
+  STT_LOCAL_MODEL: z.string().default("Systran/faster-whisper-small"),
+  STT_FALLBACK_MESSAGE: z
+    .string()
+    .default(
+      "Désolé, je n'ai pas pu écouter votre message vocal 🙏. Pourriez-vous écrire votre demande ?",
+    ),
   TTS_PROVIDER: z.enum(["openai", "elevenlabs", "none"]).default("openai"),
   TTS_MODEL: z.string().default("tts-1"),
   TTS_VOICE: z.string().default("alloy"),

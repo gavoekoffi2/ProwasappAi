@@ -60,6 +60,42 @@ whatsappRouter.delete(
   }),
 );
 
+// Real-time health view: combines the DB row with the in-memory socket state.
+// Useful for the dashboard "is my bot actually listening right now?" widget.
+whatsappRouter.get(
+  "/sessions/:id/health",
+  asyncHandler(async (req, res) => {
+    const session = await prisma.whatsappSession.findFirst({
+      where: { id: req.params.id, tenantId: req.auth!.tenantId },
+    });
+    if (!session) throw notFound();
+    const live = whatsapp.inspect(session.id);
+    res.json({
+      id: session.id,
+      label: session.label,
+      phone: session.phone,
+      dbStatus: session.status,
+      lastError: session.lastError,
+      live,
+      healthy: live.inMemory && live.status === "connected" && live.wsReady,
+    });
+  }),
+);
+
+// Force a reconnect (e.g. after the user noticed the bot is offline).
+whatsappRouter.post(
+  "/sessions/:id/reconnect",
+  asyncHandler(async (req, res) => {
+    const session = await prisma.whatsappSession.findFirst({
+      where: { id: req.params.id, tenantId: req.auth!.tenantId },
+    });
+    if (!session) throw notFound();
+    await whatsapp.stop(session.id).catch(() => {});
+    whatsapp.start(session.id, session.tenantId).catch(() => {});
+    res.json({ ok: true });
+  }),
+);
+
 // Server-Sent Events stream of QR codes + status for a session.
 whatsappRouter.get(
   "/sessions/:id/qr",

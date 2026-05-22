@@ -23,6 +23,8 @@ type SessionEntry = {
   sock: WASocket;
   status: Status;
   starting: boolean;
+  tenantId: string;
+  lastSeenAt: number;
 };
 
 export type InboundEvent = {
@@ -49,14 +51,32 @@ const baileysLogger = {
   child: () => baileysLogger,
 };
 
+const HEARTBEAT_INTERVAL_MS = 60_000;
+
 class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
   private sessions = new Map<string, SessionEntry>();
   private reconnectAttempts = new Map<string, number>();
+  private reconnectTimers = new Map<string, NodeJS.Timeout>();
+  private heartbeat: NodeJS.Timeout | null = null;
+
+  constructor() {
+    super();
+    this.startHeartbeat();
+  }
+
+  // ── Public API ───────────────────────────────────────────────────────────
 
   async start(sessionId: string, tenantId: string): Promise<SessionEntry> {
     // Idempotent: if already starting/running, return current entry.
     const existing = this.sessions.get(sessionId);
     if (existing) return existing;
+
+    // Clear any pending reconnect timer — we're starting fresh.
+    const pending = this.reconnectTimers.get(sessionId);
+    if (pending) {
+      clearTimeout(pending);
+      this.reconnectTimers.delete(sessionId);
+    }
 
     const authDir = path.join(env.WA_SESSIONS_DIR, sessionId);
     await fs.mkdir(authDir, { recursive: true });
@@ -73,17 +93,23 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
       printQRInTerminal: false,
       syncFullHistory: false,
       markOnlineOnConnect: false,
-      // Pass a minimal logger; baileys types accept any pino-like logger.
       logger: baileysLogger as unknown as Parameters<typeof makeWASocket>[0]["logger"],
     });
 
-    const entry: SessionEntry = { sock, status: "connecting", starting: true };
+    const entry: SessionEntry = {
+      sock,
+      status: "connecting",
+      starting: true,
+      tenantId,
+      lastSeenAt: Date.now(),
+    };
     this.sessions.set(sessionId, entry);
 
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", async (u) => {
       const { connection, lastDisconnect, qr } = u;
+      entry.lastSeenAt = Date.now();
 
       if (qr) {
         entry.status = "qr";
@@ -127,28 +153,28 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
         redisPub
           .publish(`wa:status:${sessionId}`, loggedOut ? "error" : "disconnected")
           .catch(() => {});
+
+        // Tear the socket down cleanly before forgetting it. If we don't,
+        // orphaned listeners and ws connections leak and can fire callbacks
+        // for a session that no longer exists in the map.
+        this.teardownSocket(entry.sock);
         this.sessions.delete(sessionId);
 
         if (loggedOut) {
-          // Auth state is dead — wipe it so next start yields a fresh QR.
           await fs.rm(authDir, { recursive: true, force: true }).catch(() => {});
           return;
         }
 
-        // Exponential backoff, capped.
-        const n = (this.reconnectAttempts.get(sessionId) ?? 0) + 1;
-        this.reconnectAttempts.set(sessionId, n);
-        const delay = Math.min(60_000, 2_000 * Math.pow(2, Math.min(n, 5)));
-        setTimeout(() => {
-          this.start(sessionId, tenantId).catch((err) =>
-            logger.error({ err, sessionId }, "reconnect failed"),
-          );
-        }, delay);
+        this.scheduleReconnect(sessionId, tenantId);
       }
     });
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
+      entry.lastSeenAt = Date.now();
       if (type !== "notify") return;
+      // Drop events that belong to an orphaned socket (e.g. arriving after a
+      // reconnect already replaced this entry in the map).
+      if (this.sessions.get(sessionId) !== entry) return;
       for (const m of messages) {
         try {
           await this.handleIncoming(sessionId, tenantId, m, sock);
@@ -162,6 +188,11 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
   }
 
   async stop(sessionId: string) {
+    const pending = this.reconnectTimers.get(sessionId);
+    if (pending) {
+      clearTimeout(pending);
+      this.reconnectTimers.delete(sessionId);
+    }
     const entry = this.sessions.get(sessionId);
     if (!entry) return;
     try {
@@ -169,16 +200,30 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
     } catch {
       /* ignore */
     }
-    try {
-      entry.sock.end(undefined);
-    } catch {
-      /* ignore */
-    }
+    this.teardownSocket(entry.sock);
     this.sessions.delete(sessionId);
   }
 
   isConnected(sessionId: string): boolean {
     return this.sessions.get(sessionId)?.status === "connected";
+  }
+
+  // Real-time view of a session, used by /health endpoint and frontend.
+  inspect(sessionId: string): {
+    inMemory: boolean;
+    status: Status | null;
+    lastSeenAt: number | null;
+    wsReady: boolean;
+  } {
+    const entry = this.sessions.get(sessionId);
+    if (!entry) return { inMemory: false, status: null, lastSeenAt: null, wsReady: false };
+    const ws = (entry.sock as unknown as { ws?: { readyState?: number } }).ws;
+    return {
+      inMemory: true,
+      status: entry.status,
+      lastSeenAt: entry.lastSeenAt,
+      wsReady: ws?.readyState === 1,
+    };
   }
 
   async send(
@@ -202,6 +247,7 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
             ? { text: msg.text }
             : { audio: msg.audio, ptt: true, mimetype: "audio/ogg; codecs=opus" };
         const sent = await entry.sock.sendMessage(remoteJid, content);
+        entry.lastSeenAt = Date.now();
         return sent?.key?.id ?? null;
       } catch (err) {
         lastErr = err;
@@ -210,6 +256,65 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
       }
     }
     throw lastErr;
+  }
+
+  // ── Internals ────────────────────────────────────────────────────────────
+
+  private teardownSocket(sock: WASocket) {
+    try {
+      sock.ev.removeAllListeners("creds.update");
+      sock.ev.removeAllListeners("connection.update");
+      sock.ev.removeAllListeners("messages.upsert");
+    } catch {
+      /* ignore */
+    }
+    try {
+      sock.end(undefined);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private scheduleReconnect(sessionId: string, tenantId: string) {
+    const n = (this.reconnectAttempts.get(sessionId) ?? 0) + 1;
+    this.reconnectAttempts.set(sessionId, n);
+    const delay = Math.min(60_000, 2_000 * Math.pow(2, Math.min(n, 5)));
+    logger.info({ sessionId, attempt: n, delay }, "scheduling whatsapp reconnect");
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(sessionId);
+      this.start(sessionId, tenantId).catch((err) =>
+        logger.error({ err, sessionId }, "reconnect failed"),
+      );
+    }, delay);
+    // Don't keep the process alive just for a pending reconnect.
+    timer.unref?.();
+    this.reconnectTimers.set(sessionId, timer);
+  }
+
+  // Periodically inspect every live session and force a reconnect for any
+  // socket whose underlying WebSocket is dead but whose status didn't update
+  // (which is the classic "bot stops responding silently" symptom).
+  private startHeartbeat() {
+    this.heartbeat = setInterval(() => {
+      for (const [sessionId, entry] of this.sessions) {
+        const ws = (entry.sock as unknown as { ws?: { readyState?: number } }).ws;
+        const dead = ws?.readyState !== 1 && entry.status === "connected";
+        if (!dead) continue;
+        logger.warn(
+          { sessionId, readyState: ws?.readyState },
+          "heartbeat: socket is dead despite 'connected' status, restarting",
+        );
+        const tenantId = entry.tenantId;
+        this.teardownSocket(entry.sock);
+        this.sessions.delete(sessionId);
+        prisma.whatsappSession
+          .update({ where: { id: sessionId }, data: { status: "disconnected" } })
+          .catch(() => {});
+        redisPub.publish(`wa:status:${sessionId}`, "disconnected").catch(() => {});
+        this.scheduleReconnect(sessionId, tenantId);
+      }
+    }, HEARTBEAT_INTERVAL_MS);
+    this.heartbeat.unref?.();
   }
 
   private async handleIncoming(
@@ -246,7 +351,9 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
       return;
     }
 
-    if (msg.audioMessage) {
+    // Voice notes (ptt) AND regular audio messages.
+    const audioMessage = msg.audioMessage ?? msg.ephemeralMessage?.message?.audioMessage;
+    if (audioMessage) {
       const buf = await downloadMediaMessage(
         m,
         "buffer",
@@ -265,7 +372,7 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
         waMessageId,
         kind: "audio",
         media: buf as Buffer,
-        mimeType: msg.audioMessage.mimetype ?? "audio/ogg",
+        mimeType: audioMessage.mimetype ?? "audio/ogg",
       } satisfies InboundEvent);
       return;
     }
