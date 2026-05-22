@@ -1,0 +1,17 @@
+# Netlify build config for the ProwasappAI frontend.
+# The backend (Express + Baileys + WhatsApp) cannot run on Netlify and must
+# be hosted elsewhere (VPS, Render, Fly.io, Railway). Set NEXT_PUBLIC_API_URL
+# in Netlify → Site settings → Environment variables to point at it.
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Default API URL — override in Netlify env vars with your real backend URL.
+  NEXT_PUBLIC_API_URL = "http://localhost:4000"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
