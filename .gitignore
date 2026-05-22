@@ -30,3 +30,7 @@ backend/prisma/*.db
 # Next.js generated files
 frontend/next-env.d.ts
 frontend/tsconfig.tsbuildinfo
+
+# Netlify CLI cache
+.netlify/
+frontend/.netlify/
