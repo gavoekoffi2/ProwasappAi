@@ -1,0 +1,76 @@
+version: "3.9"
+
+# Production stack for the VPS.
+# - Backend (Node.js + Baileys) on port 4000 (internal)
+# - Redis (local, for pub/sub between Baileys workers)
+# - Caddy reverse proxy with automatic HTTPS via Let's Encrypt
+# Postgres is hosted on Supabase (set DATABASE_URL in .env).
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - prowasapp
+
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      TRUST_PROXY: "true"
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - wa_sessions:/app/wa_sessions
+      - uploads:/app/uploads
+    networks:
+      - prowasapp
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://localhost:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - prowasapp
+
+networks:
+  prowasapp:
+
+volumes:
+  redisdata:
+  wa_sessions:
+  uploads:
+  caddy_data:
+  caddy_config:
