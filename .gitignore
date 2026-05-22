@@ -26,3 +26,7 @@ backend/tmp/
 
 # Prisma
 backend/prisma/*.db
+
+# Next.js generated files
+frontend/next-env.d.ts
+frontend/tsconfig.tsbuildinfo
