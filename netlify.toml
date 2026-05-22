@@ -4,9 +4,8 @@
 # in Netlify → Site settings → Environment variables to point at it.
 
 [build]
-  base = "frontend"
-  command = "npm run build"
-  publish = ".next"
+  command = "cd frontend && npm install && npm run build"
+  publish = "frontend/.next"
 
 [build.environment]
   NODE_VERSION = "20"
