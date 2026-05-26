@@ -3,6 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
+import { spawn } from "child_process";
 import { env } from "../../config/env";
 import { logger } from "../../config/logger";
 
@@ -40,7 +41,33 @@ function pickExt(mimeType: string): string {
   if (m.includes("wav")) return "wav";
   if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return "m4a";
   if (m.includes("webm")) return "webm";
-  return "ogg";
+  if (m.includes("ogg") || m.includes("opus")) return "ogg";
+  return "bin";
+}
+
+// Transcode any incoming audio to 16 kHz mono WAV. This is the format Whisper
+// (OpenAI + Groq) handles most reliably. WhatsApp voice notes arrive as
+// audio/ogg with opus codec, which Groq rejects outright and which sometimes
+// trips OpenAI's content-type sniffing — transcoding sidesteps both.
+async function transcodeToWav(inputPath: string): Promise<string> {
+  const outPath = inputPath.replace(/\.[^.]+$/, "") + ".wav";
+  await new Promise<void>((resolve, reject) => {
+    const ff = spawn(
+      "ffmpeg",
+      ["-loglevel", "error", "-y", "-i", inputPath, "-ac", "1", "-ar", "16000", outPath],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+    let stderr = "";
+    ff.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+    ff.on("error", reject);
+    ff.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exit ${code}: ${stderr.trim().slice(0, 400)}`));
+    });
+  });
+  return outPath;
 }
 
 async function withTempFile<T>(
@@ -49,12 +76,17 @@ async function withTempFile<T>(
   fn: (filePath: string) => Promise<T>,
 ): Promise<T> {
   const ext = pickExt(mimeType);
-  const tmp = path.join(os.tmpdir(), `stt-${crypto.randomUUID()}.${ext}`);
-  await fs.promises.writeFile(tmp, audio);
+  const id = crypto.randomUUID();
+  const rawPath = path.join(os.tmpdir(), `stt-${id}.${ext}`);
+  await fs.promises.writeFile(rawPath, audio);
+
+  let wavPath: string | null = null;
   try {
-    return await fn(tmp);
+    wavPath = await transcodeToWav(rawPath);
+    return await fn(wavPath);
   } finally {
-    fs.promises.unlink(tmp).catch(() => {});
+    fs.promises.unlink(rawPath).catch(() => {});
+    if (wavPath) fs.promises.unlink(wavPath).catch(() => {});
   }
 }
 
