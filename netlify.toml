@@ -10,7 +10,7 @@
 [build.environment]
   NODE_VERSION = "20"
   # Default API URL — override in Netlify env vars with your real backend URL.
-  NEXT_PUBLIC_API_URL = "http://localhost:4000"
+  NEXT_PUBLIC_API_URL = "https://srv1305401.hstgr.cloud"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

@@ -1,6 +1,6 @@
 "use client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://srv1305401.hstgr.cloud";
 const TOKEN_KEY = "prowasapp.token";
 // 20s is comfortably above any expected backend latency. If a request takes
 // longer it's almost certainly a stuck network or a dead backend.

@@ -1,0 +1,14 @@
+services:
+  backend:
+    command: ["node", "dist/index.js"]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.prowasapp.rule=Host(`srv1305401.hstgr.cloud`)
+      - traefik.http.routers.prowasapp.entrypoints=websecure
+      - traefik.http.routers.prowasapp.tls=true
+      - traefik.http.routers.prowasapp.tls.certresolver=letsencrypt
+      - traefik.http.services.prowasapp.loadbalancer.server.port=4000
+  caddy:
+    profiles:
+      - disabled
+    ports: []
