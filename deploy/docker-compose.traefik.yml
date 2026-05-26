@@ -12,3 +12,24 @@ services:
     profiles:
       - disabled
     ports: []
+
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: unless-stopped
+    environment:
+      UVICORN_HOST: 0.0.0.0
+      UVICORN_PORT: 8000
+      HF_HUB_ENABLE_HF_TRANSFER: "0"
+    volumes:
+      - speaches_cache:/home/ubuntu/.cache/huggingface
+    networks:
+      - prowasapp
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/health\", timeout=5).read()'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  speaches_cache:

@@ -9,8 +9,9 @@ import { logger } from "../../config/logger";
 
 // Multi-provider speech-to-text with automatic fallback.
 //
-// WhatsApp voice notes arrive as audio/ogg with opus codec. Whisper handles
-// them natively, so no transcoding is required.
+// WhatsApp voice notes arrive as audio/ogg with opus codec. We transcode all
+// incoming audio to mono 16 kHz WAV before sending to STT providers because
+// this is the most reliable format for cloud and local Whisper endpoints.
 //
 // Providers are tried in order until one returns a non-empty transcript:
 //   1) Groq Whisper       (free tier, OpenAI-compatible, recommended primary)
@@ -50,7 +51,7 @@ function pickExt(mimeType: string): string {
 // audio/ogg with opus codec, which Groq rejects outright and which sometimes
 // trips OpenAI's content-type sniffing — transcoding sidesteps both.
 async function transcodeToWav(inputPath: string): Promise<string> {
-  const outPath = inputPath.replace(/\.[^.]+$/, "") + ".wav";
+  const outPath = inputPath.replace(/\.[^.]+$/, "") + ".converted.wav";
   await new Promise<void>((resolve, reject) => {
     const ff = spawn(
       "ffmpeg",
