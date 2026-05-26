@@ -9,7 +9,10 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  # Default API URL — override in Netlify env vars with your real backend URL.
+  # Production backend (Hostinger VPS, srv1305401.hstgr.cloud).
+  # Override in Netlify → Site settings → Build & deploy → Environment if
+  # you change hosts; an env-var of the same name in netlify.toml beats the
+  # UI value, so the source of truth lives here.
   NEXT_PUBLIC_API_URL = "https://srv1305401.hstgr.cloud"
 
 [[plugins]]
