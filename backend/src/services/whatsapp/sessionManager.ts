@@ -78,8 +78,13 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
       this.reconnectTimers.delete(sessionId);
     }
 
-    const authDir = path.join(env.WA_SESSIONS_DIR, sessionId);
-    await fs.mkdir(authDir, { recursive: true });
+    // Sessions are stored under wa_sessions/<tenantId>/<sessionId>/ so a leak
+    // of the filesystem (or a misbehaving worker) can never cross tenants.
+    // Tenant dir gets mode 0700 — only the running user can read it.
+    const tenantDir = path.join(env.WA_SESSIONS_DIR, tenantId);
+    await fs.mkdir(tenantDir, { recursive: true, mode: 0o700 });
+    const authDir = path.join(tenantDir, sessionId);
+    await fs.mkdir(authDir, { recursive: true, mode: 0o700 });
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
     const { version } = await fetchLatestBaileysVersion().catch(() => ({
@@ -161,6 +166,7 @@ class WhatsappSessionManager extends EventEmitter implements IWhatsappAdapter {
         this.sessions.delete(sessionId);
 
         if (loggedOut) {
+          // Tear down on logout, but keep the tenant dir (other sessions may live there).
           await fs.rm(authDir, { recursive: true, force: true }).catch(() => {});
           return;
         }

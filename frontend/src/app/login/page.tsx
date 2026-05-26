@@ -36,28 +36,42 @@ export default function LoginPage() {
       <form onSubmit={onSubmit} className="card w-full max-w-md space-y-4 p-8">
         <h1 className="text-2xl font-semibold">Se connecter</h1>
         {error && <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-        <label className="block">
-          <span className="mb-1 block text-sm">Email</span>
+        <div>
+          <label htmlFor="email" className="mb-1 block text-sm">
+            Email
+          </label>
           <input
+            id="email"
             className="input"
             type="email"
+            autoComplete="email"
+            inputMode="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm">Mot de passe</span>
+        </div>
+        <div>
+          <label htmlFor="password" className="mb-1 block text-sm">
+            Mot de passe
+          </label>
           <input
+            id="password"
             className="input"
             type="password"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-        </label>
-        <button className="btn-primary w-full" type="submit" disabled={loading}>
-          {loading ? "..." : "Connexion"}
+        </div>
+        <button
+          className="btn-primary w-full"
+          type="submit"
+          disabled={loading}
+          aria-busy={loading}
+        >
+          {loading ? "Connexion en cours…" : "Connexion"}
         </button>
         <p className="text-center text-sm text-slate-600">
           Pas encore de compte ?{" "}

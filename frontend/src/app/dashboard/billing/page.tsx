@@ -27,9 +27,11 @@ export default function BillingPage() {
   const { data: sub, mutate: refreshSub } = useSWR<Subscription>("/billing/subscription", fetcher);
   const { data: usage } = useSWR<Usage>("/billing/usage", fetcher);
   const [loading, setLoading] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   async function choose(plan: "starter" | "pro" | "business") {
     setLoading(plan);
+    setNotice(null);
     try {
       const r = await api<{ url: string | null; provider: string }>("/billing/subscription", {
         method: "POST",
@@ -39,10 +41,19 @@ export default function BillingPage() {
         window.location.href = r.url;
         return;
       }
-      alert(
-        "Abonnement activé. Si vous utilisez le paiement Mobile Money, votre responsable ProwasappAI vous contactera pour confirmer le versement.",
-      );
+      setNotice({
+        kind: "ok",
+        text: "Abonnement activé. Si vous payez en Mobile Money, votre responsable ProwasappAI vous contactera pour confirmer le versement.",
+      });
       await refreshSub();
+    } catch (err) {
+      setNotice({
+        kind: "err",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Impossible de mettre à jour l'abonnement. Réessayez.",
+      });
     } finally {
       setLoading(null);
     }
@@ -57,6 +68,19 @@ export default function BillingPage() {
           <strong>{sub?.status ?? "—"}</strong>
         </p>
       </header>
+
+      {notice && (
+        <div
+          role={notice.kind === "err" ? "alert" : "status"}
+          className={`rounded-lg p-3 text-sm ${
+            notice.kind === "ok"
+              ? "bg-emerald-50 text-emerald-800"
+              : "bg-red-50 text-red-700"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
 
       {usage && (
         <div className="card p-6">
@@ -83,10 +107,15 @@ export default function BillingPage() {
             <p className="mt-4 text-2xl font-semibold">{p.price}</p>
             <button
               className="btn-primary mt-auto"
-              disabled={loading === p.id || sub?.plan === p.id}
-              onClick={() => choose(p.id as any)}
+              disabled={loading !== null || sub?.plan === p.id}
+              aria-busy={loading === p.id}
+              onClick={() => choose(p.id)}
             >
-              {sub?.plan === p.id ? "Plan actuel" : loading === p.id ? "..." : "Choisir"}
+              {sub?.plan === p.id
+                ? "Plan actuel"
+                : loading === p.id
+                  ? "Activation en cours…"
+                  : "Choisir"}
             </button>
           </div>
         ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, setToken } from "@/lib/api";
@@ -34,12 +34,14 @@ export default function RegisterPage() {
       });
       setToken(r.token);
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message ?? "Erreur lors de l'inscription");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur lors de l'inscription");
     } finally {
       setLoading(false);
     }
   }
+
+  const industryId = useId();
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-12">
@@ -48,12 +50,31 @@ export default function RegisterPage() {
         <p className="text-sm text-slate-600">
           7 jours gratuits. Aucune carte bancaire requise.
         </p>
-        {error && <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-        <Input label="Nom complet" value={form.name} onChange={(v) => set("name", v)} />
-        <Input label="Nom de l'entreprise" value={form.businessName} onChange={(v) => set("businessName", v)} />
-        <label className="block">
-          <span className="mb-1 block text-sm">Secteur</span>
+        {error && (
+          <p role="alert" className="rounded bg-red-50 p-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <Input
+          label="Nom complet"
+          autoComplete="name"
+          value={form.name}
+          onChange={(v) => set("name", v)}
+          maxLength={120}
+        />
+        <Input
+          label="Nom de l'entreprise"
+          autoComplete="organization"
+          value={form.businessName}
+          onChange={(v) => set("businessName", v)}
+          maxLength={120}
+        />
+        <div>
+          <label htmlFor={industryId} className="mb-1 block text-sm">
+            Secteur
+          </label>
           <select
+            id={industryId}
             className="input"
             value={form.industry}
             onChange={(e) => set("industry", e.target.value as typeof form.industry)}
@@ -63,15 +84,37 @@ export default function RegisterPage() {
             <option value="services">Services / Prestations</option>
             <option value="other">Autre</option>
           </select>
-        </label>
-        <Input label="Email" type="email" value={form.email} onChange={(v) => set("email", v)} />
-        <Input label="Mot de passe (min. 8 caractères)" type="password" value={form.password} onChange={(v) => set("password", v)} />
-        <button className="btn-primary w-full" type="submit" disabled={loading}>
-          {loading ? "..." : "Créer mon compte"}
+        </div>
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          inputMode="email"
+          value={form.email}
+          onChange={(v) => set("email", v)}
+        />
+        <Input
+          label="Mot de passe (min. 8 caractères)"
+          type="password"
+          autoComplete="new-password"
+          value={form.password}
+          onChange={(v) => set("password", v)}
+          minLength={8}
+          maxLength={128}
+        />
+        <button
+          className="btn-primary w-full"
+          type="submit"
+          disabled={loading}
+          aria-busy={loading}
+        >
+          {loading ? "Création du compte…" : "Créer mon compte"}
         </button>
         <p className="text-center text-sm text-slate-600">
           Déjà inscrit ?{" "}
-          <Link href="/login" className="text-brand-600 hover:underline">Se connecter</Link>
+          <Link href="/login" className="text-brand-600 hover:underline">
+            Se connecter
+          </Link>
         </p>
       </form>
     </main>
@@ -83,22 +126,38 @@ function Input({
   value,
   onChange,
   type = "text",
+  autoComplete,
+  inputMode,
+  minLength,
+  maxLength,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  autoComplete?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  minLength?: number;
+  maxLength?: number;
 }) {
+  const id = useId();
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm">{label}</span>
+    <div>
+      <label htmlFor={id} className="mb-1 block text-sm">
+        {label}
+      </label>
       <input
+        id={id}
         className="input"
         type={type}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required
+        minLength={minLength}
+        maxLength={maxLength}
       />
-    </label>
+    </div>
   );
 }

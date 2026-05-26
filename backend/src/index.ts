@@ -17,13 +17,29 @@ import { startInboundWorker } from "./services/whatsapp/inboundWorker";
 import { whatsapp } from "./services/whatsapp/sessionManager";
 import { prisma } from "./config/prisma";
 
+// Fail loudly on unhandled async errors — silent crashes are the worst.
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "unhandledRejection — exiting");
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "uncaughtException — exiting");
+  process.exit(1);
+});
+
 async function main() {
   const app = express();
 
   if (env.TRUST_PROXY) app.set("trust proxy", 1);
   app.disable("x-powered-by");
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+      // The API never returns HTML — no need for a CSP at this layer.
+      contentSecurityPolicy: false,
+    }),
+  );
   const allowed = corsOrigins();
   app.use(
     cors({
@@ -37,7 +53,7 @@ async function main() {
     }),
   );
   app.use(express.json({ limit: "2mb" }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: "2mb" }));
   app.use(
     pinoHttp({
       logger,
@@ -58,11 +74,26 @@ async function main() {
       await prisma.$queryRawUnsafe("SELECT 1");
       res.json({ ok: true });
     } catch (err) {
-      res.status(503).json({ ok: false, error: (err as Error).message });
+      // Log the full error server-side but never expose it to clients.
+      logger.error({ err }, "health/db failed");
+      res.status(503).json({ ok: false });
     }
   });
 
-  // Rate-limit auth routes to slow down credential stuffing.
+  // Global rate limiter — keeps a single bad actor from saturating the API.
+  // Authenticated burst usage (e.g. SSE keepalive, dashboard polling) lives
+  // comfortably under this limit; abusive traffic gets throttled fast.
+  const globalLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 600,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: (req) => req.path === "/health" || req.path === "/health/db",
+    message: { error: "Too many requests, slow down." },
+  });
+  app.use(globalLimiter);
+
+  // Tighter limit on the auth endpoints to slow credential stuffing.
   const authLimiter = rateLimit({
     windowMs: 60_000,
     limit: env.AUTH_RATE_LIMIT_PER_MIN,
@@ -90,11 +121,31 @@ async function main() {
     logger.info({ port: env.PORT, provider: env.LLM_PROVIDER }, "🚀 API started");
   });
 
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, "shutting down");
-    server.close();
-    await prisma.$disconnect().catch(() => {});
-    process.exit(0);
+  // Drain in-flight requests on SIGTERM/SIGINT before closing the DB pool.
+  // Without this, docker-compose restarts can drop responses and corrupt
+  // WhatsApp socket teardown.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ signal }, "shutting down gracefully");
+
+    // Stop accepting new connections; existing ones finish.
+    server.close(async () => {
+      try {
+        await prisma.$disconnect();
+      } catch (err) {
+        logger.warn({ err }, "prisma disconnect failed");
+      }
+      logger.info("shutdown complete");
+      process.exit(0);
+    });
+
+    // Hard exit if drain takes too long (e.g. a long-lived SSE stream).
+    setTimeout(() => {
+      logger.warn("forced shutdown after timeout");
+      process.exit(1);
+    }, 15_000).unref();
   };
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
@@ -108,10 +159,12 @@ async function resumeSessions() {
   const sessions = await prisma.whatsappSession.findMany({
     where: { status: { in: ["pending", "connected", "connecting", "qr", "disconnected"] } },
   });
+  // Stagger reconnects so we don't slam Baileys/network on boot.
   for (const s of sessions) {
     whatsapp.start(s.id, s.tenantId).catch((err) =>
       logger.warn({ err, id: s.id }, "failed to resume session"),
     );
+    await new Promise((r) => setTimeout(r, 300));
   }
 }
 

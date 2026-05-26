@@ -17,7 +17,8 @@ conversationsRouter.get(
       .object({
         sessionId: z.string().optional(),
         mode: z.enum(["ai", "human"]).optional(),
-        limit: z.coerce.number().min(1).max(200).default(50),
+        limit: z.coerce.number().min(1).max(100).default(50),
+        cursor: z.string().optional(),
       })
       .parse(req.query);
 
@@ -28,29 +29,64 @@ conversationsRouter.get(
         mode: q.mode,
       },
       orderBy: { lastAt: "desc" },
-      take: q.limit,
+      take: q.limit + 1,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       include: {
-        messages: { orderBy: { createdAt: "desc" }, take: 1 },
+        // Last message preview only — single nested query, no N+1.
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            text: true,
+            type: true,
+            direction: true,
+            createdAt: true,
+          },
+        },
       },
     });
-    res.json(convos);
+
+    const hasMore = convos.length > q.limit;
+    const items = hasMore ? convos.slice(0, q.limit) : convos;
+    // Expose pagination via header so the body stays an array (frontend-compatible).
+    if (hasMore) res.setHeader("X-Next-Cursor", items[items.length - 1]?.id ?? "");
+    res.json(items);
   }),
 );
 
 conversationsRouter.get(
   "/:id/messages",
   asyncHandler(async (req, res) => {
+    const q = z
+      .object({
+        limit: z.coerce.number().min(1).max(200).default(100),
+        before: z.string().optional(),
+      })
+      .parse(req.query);
+
     const convo = await prisma.conversation.findFirst({
       where: { id: req.params.id, tenantId: req.auth!.tenantId },
     });
     if (!convo) throw notFound();
+
+    // Defense-in-depth: scope by tenantId too, not only conversationId.
+    // If a future bug ever lets a foreign convo id leak through, this
+    // still blocks cross-tenant reads.
     const messages = await prisma.message.findMany({
-      where: { conversationId: convo.id },
-      orderBy: { createdAt: "asc" },
-      take: 200,
+      where: {
+        conversationId: convo.id,
+        tenantId: req.auth!.tenantId,
+        ...(q.before ? { createdAt: { lt: new Date(q.before) } } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: q.limit,
     });
-    // Reset unread on fetch.
-    if (convo.unread > 0) {
+    // Restore chronological order for the client.
+    messages.reverse();
+
+    // Reset unread on fetch (only when reading the latest page).
+    if (!q.before && convo.unread > 0) {
       await prisma.conversation.update({ where: { id: convo.id }, data: { unread: 0 } });
     }
     res.json({ conversation: convo, messages });
@@ -60,7 +96,7 @@ conversationsRouter.get(
 conversationsRouter.post(
   "/:id/messages",
   asyncHandler(async (req, res) => {
-    const { text } = z.object({ text: z.string().min(1) }).parse(req.body);
+    const { text } = z.object({ text: z.string().min(1).max(4000) }).parse(req.body);
     const convo = await prisma.conversation.findFirst({
       where: { id: req.params.id, tenantId: req.auth!.tenantId },
     });

@@ -58,17 +58,24 @@ async function withTempFile<T>(
   }
 }
 
+// 30s is plenty for a 1-min voice note on Whisper-large; anything beyond
+// that means the upstream is stuck and we'd rather fall back to the next provider.
+const STT_TIMEOUT_MS = 30_000;
+
 async function transcribeOpenAICompatible(
   client: OpenAI,
   model: string,
   filePath: string,
 ): Promise<{ text: string; durationSec?: number }> {
   // verbose_json gives us the duration, useful for usage tracking.
-  const res = (await client.audio.transcriptions.create({
-    file: fs.createReadStream(filePath),
-    model,
-    response_format: "verbose_json" as never,
-  })) as { text?: string; duration?: number };
+  const res = (await client.audio.transcriptions.create(
+    {
+      file: fs.createReadStream(filePath),
+      model,
+      response_format: "verbose_json" as never,
+    },
+    { timeout: STT_TIMEOUT_MS, maxRetries: 1 },
+  )) as { text?: string; duration?: number };
   return { text: (res.text ?? "").trim(), durationSec: res.duration };
 }
 
@@ -87,6 +94,7 @@ async function transcribeLocal(
   const res = await fetch(`${base}/v1/audio/transcriptions`, {
     method: "POST",
     body: form as unknown as BodyInit,
+    signal: AbortSignal.timeout(STT_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`local STT HTTP ${res.status}: ${await res.text().catch(() => "")}`);

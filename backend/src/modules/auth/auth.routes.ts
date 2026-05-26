@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { requireAuth, signToken } from "../../middleware/auth";
@@ -8,13 +9,23 @@ import { asyncHandler, conflict, unauthorized } from "../../utils/errors";
 
 export const authRouter = Router();
 
+// Cost 12 (~250-400 ms / hash on a 1 vCPU VPS) — strong enough that leaked
+// hashes are expensive to crack, still fast enough that login feels instant.
+const BCRYPT_COST = 12;
+
+// A real-cost dummy hash used for timing-equalisation on login. We always
+// run bcrypt.compare, even when the email doesn't exist, so an attacker
+// can't distinguish "unknown email" from "wrong password" via response time.
+// Computed once at module load.
+const DUMMY_HASH = bcrypt.hashSync("__prowasapp_timing_safe_dummy__", BCRYPT_COST);
+
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
-  name: z.string().min(1),
-  businessName: z.string().min(1),
+  password: z.string().min(8).max(128),
+  name: z.string().min(1).max(120),
+  businessName: z.string().min(1).max(120),
   industry: z.enum(["ecommerce", "realestate", "services", "other"]).default("other"),
-  locale: z.string().default("fr"),
+  locale: z.string().min(2).max(10).default("fr"),
 });
 
 authRouter.post(
@@ -22,43 +33,50 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = registerSchema.parse(req.body);
 
-    const existing = await prisma.user.findUnique({ where: { email: body.email } });
-    if (existing) throw conflict("Email already in use");
-
-    const hash = await bcrypt.hash(body.password, 10);
-
+    const hash = await bcrypt.hash(body.password, BCRYPT_COST);
     const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    const tenant = await prisma.tenant.create({
-      data: {
-        name: body.businessName,
-        industry: body.industry,
-        locale: body.locale,
-        users: {
-          create: {
-            email: body.email,
-            password: hash,
-            name: body.name,
-            role: "owner",
+    // Prisma's nested create is atomic (single transaction at the SQL layer).
+    // If the unique constraint on email fires, we surface a clean 409 instead
+    // of a 500. Two concurrent registrations race here safely.
+    let tenant;
+    try {
+      tenant = await prisma.tenant.create({
+        data: {
+          name: body.businessName,
+          industry: body.industry,
+          locale: body.locale,
+          users: {
+            create: {
+              email: body.email,
+              password: hash,
+              name: body.name,
+              role: "owner",
+            },
+          },
+          subscription: {
+            create: {
+              plan: "starter",
+              status: "trialing",
+              trialEndsAt,
+              provider: env.BILLING_PROVIDER,
+            },
+          },
+          aiConfig: {
+            create: {
+              systemPrompt: defaultPromptFor(body.industry, body.businessName, body.locale),
+              language: body.locale,
+            },
           },
         },
-        subscription: {
-          create: {
-            plan: "starter",
-            status: "trialing",
-            trialEndsAt,
-            provider: env.BILLING_PROVIDER,
-          },
-        },
-        aiConfig: {
-          create: {
-            systemPrompt: defaultPromptFor(body.industry, body.businessName, body.locale),
-            language: body.locale,
-          },
-        },
-      },
-      include: { users: true },
-    });
+        include: { users: true },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        throw conflict("Email already in use");
+      }
+      throw err;
+    }
 
     const user = tenant.users[0];
     const token = signToken({ sub: user.id, tenantId: tenant.id, role: user.role });
@@ -68,7 +86,7 @@ authRouter.post(
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(1).max(128),
 });
 
 authRouter.post(
@@ -76,9 +94,12 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) throw unauthorized("Invalid credentials");
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) throw unauthorized("Invalid credentials");
+
+    // Always run bcrypt.compare with a real-cost hash so the response time
+    // is identical whether the email exists or not (defeats timing-based
+    // user enumeration).
+    const ok = await bcrypt.compare(password, user?.password ?? DUMMY_HASH);
+    if (!user || !ok) throw unauthorized("Invalid credentials");
 
     const token = signToken({ sub: user.id, tenantId: user.tenantId, role: user.role });
     res.json({ token, user: publicUser(user) });

@@ -52,9 +52,13 @@ whatsappRouter.delete(
     if (!session) throw notFound();
     await whatsapp.stop(session.id).catch(() => {});
     await prisma.whatsappSession.delete({ where: { id: session.id } });
-    // Wipe Baileys auth state so nothing lingers on disk.
+    // Wipe Baileys auth state so nothing lingers on disk. Matches the
+    // tenant-scoped layout used by sessionManager.start().
     await fs
-      .rm(path.join(env.WA_SESSIONS_DIR, session.id), { recursive: true, force: true })
+      .rm(path.join(env.WA_SESSIONS_DIR, session.tenantId, session.id), {
+        recursive: true,
+        force: true,
+      })
       .catch(() => {});
     res.json({ ok: true });
   }),
@@ -125,18 +129,39 @@ whatsappRouter.get(
     const sub = redisSub.duplicate();
     await sub.subscribe(`wa:qr:${session.id}`, `wa:status:${session.id}`);
     sub.on("message", async (channel, payload) => {
-      if (channel === `wa:qr:${session.id}`) {
-        const dataUrl = await QRCode.toDataURL(payload);
-        send("qr", dataUrl);
-      } else if (channel === `wa:status:${session.id}`) {
-        send("status", payload);
+      try {
+        if (channel === `wa:qr:${session.id}`) {
+          const dataUrl = await QRCode.toDataURL(payload);
+          send("qr", dataUrl);
+        } else if (channel === `wa:status:${session.id}`) {
+          send("status", payload);
+        }
+      } catch {
+        /* client likely disconnected; cleanup will fire from req close */
       }
     });
 
     const keepAlive = setInterval(() => res.write(":keepalive\n\n"), 20_000);
-    req.on("close", () => {
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
       clearInterval(keepAlive);
+      sub.unsubscribe().catch(() => {});
       sub.quit().catch(() => {});
-    });
+    };
+    req.on("close", cleanup);
+    res.on("close", cleanup);
+    // Force-close streams left open more than 10 min so dead clients can't
+    // keep redis subscribers and file descriptors alive forever.
+    const maxLifetime = setTimeout(() => {
+      try {
+        res.end();
+      } catch {
+        /* noop */
+      }
+      cleanup();
+    }, 10 * 60_000);
+    maxLifetime.unref?.();
   }),
 );

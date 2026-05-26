@@ -1,7 +1,9 @@
 import { Router } from "express";
 import multer from "multer";
+import rateLimit from "express-rate-limit";
 import fs from "fs/promises";
 import path from "path";
+import type { Request } from "express";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { requireAuth } from "../../middleware/auth";
@@ -10,6 +12,17 @@ import { asyncHandler, badRequest, notFound } from "../../utils/errors";
 import { ingestDocument } from "../../services/knowledge/ingest";
 
 export const knowledgeRouter = Router();
+
+// Cap per-tenant uploads so a single bad actor can't flood the ingest pipeline
+// or the embedding budget. 20 uploads/min/tenant is generous for real usage.
+const uploadLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => req.auth?.tenantId ?? req.ip ?? "anon",
+  message: { error: "Trop d'imports en peu de temps. Réessayez dans une minute." },
+});
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
 fs.mkdir(UPLOAD_DIR, { recursive: true }).catch(() => {});
@@ -47,6 +60,7 @@ knowledgeRouter.get(
 
 knowledgeRouter.post(
   "/documents",
+  uploadLimiter,
   upload.single("file"),
   asyncHandler(async (req, res) => {
     const file = req.file;

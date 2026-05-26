@@ -47,18 +47,25 @@ function h(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
+// Hard caps so a stuck upstream can't tie up a worker forever.
+const LLM_TIMEOUT_MS = 30_000;
+const EMBED_TIMEOUT_MS = 20_000;
+
 export async function chat(messages: ChatMessage[]): Promise<string> {
   if (!client) {
     const last = [...messages].reverse().find((m) => m.role === "user");
     return `⚠️ Aucun fournisseur d'IA configuré. Echo: ${last?.content ?? ""}`;
   }
   try {
-    const res = await client.chat.completions.create({
-      model: env.LLM_MODEL,
-      temperature: env.AI_TEMPERATURE,
-      max_tokens: env.AI_MAX_TOKENS,
-      messages,
-    });
+    const res = await client.chat.completions.create(
+      {
+        model: env.LLM_MODEL,
+        temperature: env.AI_TEMPERATURE,
+        max_tokens: env.AI_MAX_TOKENS,
+        messages,
+      },
+      { timeout: LLM_TIMEOUT_MS, maxRetries: 1 },
+    );
     return res.choices[0]?.message?.content?.trim() ?? "";
   } catch (err) {
     logger.error({ err }, "chat completion failed");
@@ -77,10 +84,13 @@ export async function embed(text: string): Promise<number[]> {
   const cached = await cacheGet<number[]>(key);
   if (cached) return cached;
 
-  const res = await client.embeddings.create({
-    model: env.EMBEDDING_MODEL,
-    input: text,
-  });
+  const res = await client.embeddings.create(
+    {
+      model: env.EMBEDDING_MODEL,
+      input: text,
+    },
+    { timeout: EMBED_TIMEOUT_MS, maxRetries: 1 },
+  );
   const vec = res.data[0].embedding;
   await cacheSet(key, vec, 60 * 60 * 24 * 30).catch(() => {});
   return vec;
@@ -90,10 +100,13 @@ export async function embedMany(texts: string[]): Promise<number[][]> {
   if (!client) return Promise.all(texts.map((t) => embed(t)));
   if (texts.length === 0) return [];
   try {
-    const res = await client.embeddings.create({
-      model: env.EMBEDDING_MODEL,
-      input: texts,
-    });
+    const res = await client.embeddings.create(
+      {
+        model: env.EMBEDDING_MODEL,
+        input: texts,
+      },
+      { timeout: EMBED_TIMEOUT_MS, maxRetries: 1 },
+    );
     return res.data.map((d) => d.embedding);
   } catch (err) {
     logger.error({ err }, "embedMany failed, falling back to per-item");
