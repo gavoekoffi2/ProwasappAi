@@ -772,6 +772,8 @@ export default function LandingClient() {
 
         <VoiceShowcase />
 
+        <Pricing />
+
         <section className="cta">
           <motion.div
             className="wrap center"
@@ -802,6 +804,388 @@ export default function LandingClient() {
           </motion.div>
         </section>
       </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+// ─── Pricing — three plans with stagger + featured highlight ────────────────
+const PLANS = [
+  {
+    id: "starter",
+    name: "Starter",
+    price: "Gratuit",
+    period: "7 jours d'essai",
+    desc: "Pour tester ProwasappAI sans engagement.",
+    cta: "Commencer gratuitement",
+    features: [
+      "1 000 réponses IA par mois",
+      "1 numéro WhatsApp connecté",
+      "Base de connaissances illimitée",
+      "Notes vocales comprises",
+      "Tableau de bord et statistiques",
+    ],
+    accent: "from-slate-500 to-slate-700",
+    featured: false,
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    price: "15 000",
+    period: "FCFA / mois",
+    desc: "Pour les commerces qui ont déjà des clients sur WhatsApp.",
+    cta: "Choisir Pro",
+    features: [
+      "10 000 réponses IA par mois",
+      "Jusqu'à 3 numéros WhatsApp",
+      "Réponses vocales (TTS)",
+      "Reprise humaine illimitée",
+      "Support prioritaire WhatsApp",
+    ],
+    accent: "from-emerald-500 to-emerald-700",
+    featured: true,
+  },
+  {
+    id: "business",
+    name: "Business",
+    price: "50 000",
+    period: "FCFA / mois",
+    desc: "Pour les équipes et boutiques à fort volume.",
+    cta: "Choisir Business",
+    features: [
+      "50 000 réponses IA par mois",
+      "Numéros WhatsApp illimités",
+      "API d'intégration",
+      "Onboarding personnalisé",
+      "Support dédié + SLA",
+    ],
+    accent: "from-amber-500 to-orange-600",
+    featured: false,
+  },
+] as const;
+
+function Pricing() {
+  return (
+    <section id="tarifs" style={{ background: "white", padding: "100px 0" }}>
+      <div className="wrap">
+        <Reveal>
+          <p className="kicker" style={{ textAlign: "center" }}>
+            Tarifs
+          </p>
+          <h2 className="title" style={{ textAlign: "center", margin: "12px auto 12px" }}>
+            Un prix juste, pas de surprise.
+          </h2>
+          <p
+            className="muted"
+            style={{ textAlign: "center", maxWidth: 600, margin: "0 auto" }}
+          >
+            Mobile Money accepté (Flooz, T-Money, Orange Money, MTN MoMo). Annulez
+            à tout moment depuis votre tableau de bord.
+          </p>
+        </Reveal>
+
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-80px" }}
+          style={{
+            marginTop: 56,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 22,
+            alignItems: "stretch",
+          }}
+        >
+          {PLANS.map((p) => (
+            <motion.div
+              key={p.id}
+              variants={fadeUp}
+              whileHover={{ y: -8, transition: { duration: 0.25 } }}
+              style={{
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                background: "white",
+                borderRadius: 16,
+                padding: "32px 26px",
+                border: p.featured ? "2px solid #16a34a" : "1px solid #e2e8f0",
+                boxShadow: p.featured
+                  ? "0 30px 80px rgba(22,163,74,.18)"
+                  : "0 8px 28px rgba(15,23,42,.05)",
+                transform: p.featured ? "scale(1.02)" : undefined,
+              }}
+            >
+              {p.featured && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -12,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    background:
+                      "linear-gradient(90deg, #16a34a, #15803d)",
+                    color: "white",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    letterSpacing: ".08em",
+                    textTransform: "uppercase",
+                    padding: "5px 12px",
+                    borderRadius: 999,
+                    boxShadow: "0 10px 25px rgba(22,163,74,.35)",
+                  }}
+                >
+                  Le plus choisi
+                </span>
+              )}
+
+              <div
+                className={`h-1.5 w-12 rounded-full bg-gradient-to-r ${p.accent}`}
+                style={{ marginBottom: 18 }}
+              />
+              <h3 style={{ fontSize: 22, fontWeight: 700, color: "#0f172a" }}>
+                {p.name}
+              </h3>
+              <p
+                style={{
+                  marginTop: 4,
+                  fontSize: 14,
+                  color: "#64748b",
+                  lineHeight: 1.5,
+                }}
+              >
+                {p.desc}
+              </p>
+
+              <div style={{ marginTop: 18, display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 36, fontWeight: 800, color: "#0f172a" }}>
+                  {p.price}
+                </span>
+                <span style={{ fontSize: 13, color: "#64748b" }}>{p.period}</span>
+              </div>
+
+              <ul
+                style={{
+                  marginTop: 22,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  flex: 1,
+                  listStyle: "none",
+                  padding: 0,
+                }}
+              >
+                {p.features.map((f) => (
+                  <li
+                    key={f}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      fontSize: 14,
+                      color: "#334155",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <span
+                      style={{
+                        flex: "0 0 18px",
+                        height: 18,
+                        borderRadius: 999,
+                        background: p.featured ? "#dcfce7" : "#f1f5f9",
+                        color: p.featured ? "#15803d" : "#475569",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: 11,
+                        fontWeight: 800,
+                        marginTop: 1,
+                      }}
+                    >
+                      ✓
+                    </span>
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href="/register"
+                className={p.featured ? "btn btn-primary" : "btn btn-secondary"}
+                style={{
+                  marginTop: 26,
+                  display: "inline-flex",
+                  justifyContent: "center",
+                  ...(p.featured
+                    ? {}
+                    : {
+                        border: "1px solid #cbd5e1",
+                        background: "white",
+                        color: "#0f172a",
+                      }),
+                }}
+              >
+                {p.cta}
+              </Link>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        <p
+          style={{
+            marginTop: 32,
+            textAlign: "center",
+            fontSize: 13,
+            color: "#64748b",
+          }}
+        >
+          Vous avez plus de 50 000 messages par mois ?{" "}
+          <Link href="/register" style={{ color: "#15803d", fontWeight: 600 }}>
+            Parlons d&apos;une offre sur mesure →
+          </Link>
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// ─── Footer ─────────────────────────────────────────────────────────────────
+function Footer() {
+  return (
+    <footer
+      style={{
+        background: "#07140f",
+        color: "rgba(255,255,255,.78)",
+        padding: "56px 0 28px",
+      }}
+    >
+      <div className="wrap">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 32,
+          }}
+        >
+          <div style={{ maxWidth: 260 }}>
+            <Link
+              href="/"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 10,
+                color: "white",
+                fontWeight: 900,
+                fontSize: 18,
+              }}
+            >
+              <span
+                style={{
+                  display: "grid",
+                  placeItems: "center",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: "#34d399",
+                  color: "#062016",
+                }}
+              >
+                P
+              </span>
+              ProwasappAI
+            </Link>
+            <p style={{ marginTop: 14, fontSize: 13, lineHeight: 1.6 }}>
+              L&apos;assistant WhatsApp pensé pour les entreprises africaines.
+              Texte, vocal, reprise humaine — tout en une seule plateforme.
+            </p>
+          </div>
+
+          <FooterCol
+            title="Produit"
+            links={[
+              { label: "Fonctionnalités", href: "#" },
+              { label: "Comment ça marche", href: "#" },
+              { label: "Tarifs", href: "#tarifs" },
+              { label: "Se connecter", href: "/login" },
+            ]}
+          />
+          <FooterCol
+            title="Entreprise"
+            links={[
+              { label: "À propos", href: "#" },
+              { label: "Contact", href: "mailto:hello@prowasappai.com" },
+              { label: "Conditions d'utilisation", href: "#" },
+              { label: "Confidentialité", href: "#" },
+            ]}
+          />
+          <FooterCol
+            title="Support"
+            links={[
+              { label: "Centre d'aide", href: "#" },
+              { label: "WhatsApp support", href: "https://wa.me/22890000000" },
+              { label: "Statut", href: "#" },
+            ]}
+          />
+        </div>
+
+        <div
+          style={{
+            marginTop: 40,
+            paddingTop: 24,
+            borderTop: "1px solid rgba(255,255,255,.1)",
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            gap: 12,
+            fontSize: 12,
+            color: "rgba(255,255,255,.5)",
+          }}
+        >
+          <span>
+            © {new Date().getFullYear()} ProwasappAI · Pensé en Afrique, pour
+            l&apos;Afrique 🌍
+          </span>
+          <span>
+            Mobile Money : Flooz · T-Money · Orange Money · MTN MoMo
+          </span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function FooterCol({
+  title,
+  links,
+}: {
+  title: string;
+  links: { label: string; href: string }[];
+}) {
+  return (
+    <div>
+      <p
+        style={{
+          color: "white",
+          fontSize: 13,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: ".08em",
+          marginBottom: 14,
+        }}
+      >
+        {title}
+      </p>
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 9 }}>
+        {links.map((l) => (
+          <li key={l.label}>
+            <Link
+              href={l.href}
+              style={{ fontSize: 13, color: "rgba(255,255,255,.72)" }}
+            >
+              {l.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
