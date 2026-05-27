@@ -55,21 +55,36 @@ export async function handleConversation(
     }))
     .filter((m) => m.content);
 
-  // RAG
+  // RAG — only chunks above the relevance threshold reach the LLM.
   const chunks = await retrieve(tenantId, userText).catch(() => []);
   const knowledgeBlock = chunks.length
-    ? `\n\nInformations vérifiées (utilise-les en priorité; ne cite pas les sources):\n${chunks
-        .map((c, i) => `[${i + 1}] ${c.content}`)
-        .join("\n---\n")}`
-    : "";
+    ? chunks.map((c, i) => `[${i + 1}] ${c.content}`).join("\n---\n")
+    : "(aucune information vérifiée disponible pour cette question)";
+
+  // Hard ground rules. Order matters — Whisper/GPT pay more attention to
+  // earlier system content, so the anti-hallucination rules come first.
+  const groundRules = [
+    "RÈGLES STRICTES — à respecter sans exception :",
+    "",
+    "1. Tu réponds UNIQUEMENT à partir des « Informations vérifiées » fournies plus bas. Tu n'inventes JAMAIS : ni produit, ni prix, ni horaire, ni adresse, ni stock, ni délai, ni condition de livraison, ni promotion, ni numéro de contact.",
+    "2. Pour les salutations et politesses (« bonjour », « merci », « ça va »…), tu peux répondre normalement sans information spécifique.",
+    "3. Si la question du client porte sur une info factuelle (produit, prix, dispo, livraison, horaires, contact, conditions…) et que cette info n'est PAS clairement présente dans les « Informations vérifiées », tu réponds exactement par cette phrase (et rien d'autre) :",
+    '   "Bonne question 🙏 Je vérifie cette information avec notre équipe et je reviens vers vous très vite."',
+    `   Puis tu ajoutes le mot magique sur sa propre ligne : ${HANDOFF_SENTINEL}`,
+    "4. Quand tu utilises une info des « Informations vérifiées », n'écris jamais les numéros [1], [2]… ni le mot « source ». Reformule naturellement.",
+    "5. Reste bref (2 à 4 phrases), naturel, dans la LANGUE du client.",
+  ].join("\n");
+
+  const persona = cfg.systemPrompt?.trim()
+    ? `Persona : ${cfg.systemPrompt.trim()}`
+    : `Persona : Tu es l'assistant WhatsApp de "${conversation.tenant.name}".`;
 
   const systemPrompt = [
-    cfg.systemPrompt || "Tu es un assistant WhatsApp professionnel.",
+    persona,
     industryHints[conversation.tenant.industry] ?? "",
-    `Ton: ${cfg.tone}. Langue par défaut: ${cfg.language}, mais adapte-toi à la langue du client.`,
-    `Si tu n'es pas sûr à au moins ${Math.round(cfg.confidenceFallback * 100)}%, réponds uniquement par: ${HANDOFF_SENTINEL}`,
-    "Reste bref (2-4 phrases), clair, et propose la prochaine étape.",
-    knowledgeBlock,
+    `Ton : ${cfg.tone}. Langue par défaut : ${cfg.language}, mais adapte-toi à celle du client.`,
+    groundRules,
+    `Informations vérifiées (issues de la base de connaissances du commerçant) :\n${knowledgeBlock}`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -88,17 +103,23 @@ export async function handleConversation(
     replyText = HANDOFF_SENTINEL;
   }
 
-  if (replyText.includes(HANDOFF_SENTINEL) || !replyText.trim()) {
-    // Switch to human mode, send polite fallback.
+  const hasHandoff = replyText.includes(HANDOFF_SENTINEL);
+  const cleaned = replyText.replace(HANDOFF_SENTINEL, "").trim();
+
+  if (hasHandoff || !cleaned) {
+    // The LLM didn't have enough information. We send its polite "I'll check"
+    // wording (it was instructed to write one) — or fall back to the tenant
+    // default if it skipped straight to the sentinel — and flip the
+    // conversation into human mode so the merchant sees an alert.
     await prisma.conversation.update({
       where: { id: conversationId },
-      data: { mode: "human" },
+      data: { mode: "human", unread: { increment: 1 } },
     });
-    await sendAndLog(adapter, conversation, cfg.fallbackMessage, false);
+    await sendAndLog(adapter, conversation, cleaned || cfg.fallbackMessage, false);
     return;
   }
 
-  await sendAndLog(adapter, conversation, replyText, true, cfg.voiceReply);
+  await sendAndLog(adapter, conversation, cleaned, true, cfg.voiceReply);
   await incrementUsage(tenantId, { messagesOut: 1, aiReplies: 1 });
 }
 

@@ -8,8 +8,15 @@ export interface RetrievedChunk {
   distance: number;
 }
 
-// pgvector cosine similarity — `<=>` returns distance (smaller = closer).
-// We format the embedding as a pgvector literal: '[v1,v2,...]'.
+// pgvector cosine: distance ranges roughly 0 (identical) → ~2 (opposite). In
+// practice text-embedding-3-small embeddings cluster at:
+//   <0.35 → highly relevant
+//   0.35–0.55 → loosely related
+//   >0.55 → mostly unrelated topic
+// We drop anything above the threshold so the LLM never sees an irrelevant
+// chunk it could pattern-match into a hallucinated answer.
+const MAX_DISTANCE = 0.55;
+
 export async function retrieve(
   tenantId: string,
   query: string,
@@ -18,6 +25,7 @@ export async function retrieve(
   const vec = await embed(query);
   const literal = `[${vec.join(",")}]`;
 
+  // Over-fetch so we can apply the distance filter without ending up empty.
   const rows = await prisma.$queryRawUnsafe<RetrievedChunk[]>(
     `SELECT id, content, ("embedding" <=> $1::vector) AS distance
        FROM "KnowledgeChunk"
@@ -26,7 +34,7 @@ export async function retrieve(
       LIMIT $3`,
     literal,
     tenantId,
-    k,
+    k * 2,
   );
-  return rows;
+  return rows.filter((r) => r.distance <= MAX_DISTANCE).slice(0, k);
 }

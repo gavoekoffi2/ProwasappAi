@@ -122,7 +122,7 @@ model AiConfig {
   tone               String   @default("friendly")
   language           String   @default("fr")
   voiceReply         Boolean  @default(false)
-  fallbackMessage    String   @default("Un agent va vous répondre sous peu.")
+  fallbackMessage    String   @default("Bonne question 🙏 Je vérifie cette information avec notre équipe et je reviens vers vous très vite.")
   confidenceFallback Float    @default(0.55)
   enabled            Boolean  @default(true)
   updatedAt          DateTime @updatedAt
