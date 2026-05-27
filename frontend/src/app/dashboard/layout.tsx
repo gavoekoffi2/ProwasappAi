@@ -60,7 +60,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-6 py-5">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 font-bold text-white shadow-sm">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 font-bold text-white shadow-sm">
             P
           </span>
           <span className="font-semibold tracking-tight">ProwasappAI</span>
@@ -86,7 +86,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               className={clsx(
                 "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
                 active
-                  ? "bg-emerald-50 text-emerald-700 font-medium"
+                  ? "bg-brand-50 text-brand-700 font-medium"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
               )}
             >
@@ -94,7 +94,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 size={18}
                 className={clsx(
                   "shrink-0",
-                  active ? "text-emerald-600" : "text-slate-400 group-hover:text-slate-600",
+                  active ? "text-brand-600" : "text-slate-400 group-hover:text-slate-600",
                 )}
               />
               <span>{label}</span>
@@ -120,7 +120,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile top bar */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:hidden">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-emerald-500 to-emerald-700 text-sm font-bold text-white">
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-brand-500 to-brand-700 text-sm font-bold text-white">
             P
           </span>
           <span className="font-semibold">ProwasappAI</span>
@@ -178,7 +178,7 @@ function TenantCard({ me }: { me: Me | undefined }) {
   return (
     <div className="mx-3 mb-2 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3">
       <div className="flex items-center gap-3">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-600/10 text-sm font-bold text-emerald-700">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600/10 text-sm font-bold text-brand-700">
           {initials || "P"}
         </span>
         <div className="min-w-0 flex-1">
@@ -197,7 +197,7 @@ function TenantCard({ me }: { me: Me | undefined }) {
 function PlanBadge({ plan }: { plan: string }) {
   const styles: Record<string, string> = {
     starter: "bg-slate-100 text-slate-700",
-    pro: "bg-emerald-100 text-emerald-700",
+    pro: "bg-brand-100 text-brand-700",
     business: "bg-amber-100 text-amber-800",
   };
   return (

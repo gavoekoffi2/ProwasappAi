@@ -162,13 +162,20 @@ function Thread({ conversationId, onChanged }: { conversationId: string; onChang
       <div className="flex gap-2 border-t border-slate-100 p-3">
         <input
           className="input flex-1"
-          placeholder="Tapez votre message..."
+          placeholder="Tapez votre message…"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
+          onKeyDown={(e) => e.key === "Enter" && !sending && send()}
+          maxLength={4000}
+          aria-label="Message à envoyer"
         />
-        <button className="btn-primary" onClick={send} disabled={sending}>
-          Envoyer
+        <button
+          className="btn-primary"
+          onClick={send}
+          disabled={sending || !text.trim()}
+          aria-busy={sending}
+        >
+          {sending ? "Envoi…" : "Envoyer"}
         </button>
       </div>
     </section>

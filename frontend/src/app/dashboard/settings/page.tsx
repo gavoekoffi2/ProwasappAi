@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState<AiConfig | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data && !form) setForm(data);
@@ -33,66 +34,70 @@ export default function SettingsPage() {
     if (!form) return;
     setSaving(true);
     setSaved(false);
+    setError(null);
     try {
       await api("/ai-config", { method: "PUT", body: JSON.stringify(form) });
       await mutate();
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Échec de l'enregistrement");
     } finally {
       setSaving(false);
     }
   }
 
-  if (!form) return <p className="text-sm text-slate-500">Chargement...</p>;
+  if (!form) return <p className="text-sm text-slate-500">Chargement…</p>;
 
   return (
     <div className="max-w-3xl space-y-6">
       <header>
-        <h1 className="text-2xl font-semibold">Paramètres de l'IA</h1>
+        <h1 className="text-2xl font-semibold">Paramètres de l&apos;IA</h1>
         <p className="text-sm text-slate-600">
           Ce que votre IA sait, comment elle parle, et quand elle passe la
           main à un humain.
         </p>
       </header>
 
-      <div className="card space-y-4 p-6">
-        <label className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">IA activée</p>
-            <p className="text-xs text-slate-500">
-              Désactivée, les messages entrants ne reçoivent pas de réponse auto.
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={form.enabled}
-            onChange={(e) => set("enabled", e.target.checked)}
-            className="h-5 w-5"
-          />
-        </label>
-
-        <label className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">Réponses vocales</p>
-            <p className="text-xs text-slate-500">
-              L'IA renvoie une note vocale au lieu d'un texte.
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={form.voiceReply}
-            onChange={(e) => set("voiceReply", e.target.checked)}
-            className="h-5 w-5"
-          />
-        </label>
+      <div className="rounded-xl border border-brand-200 bg-brand-50/60 p-4 text-sm text-brand-900">
+        <p className="font-semibold">Comment l&apos;IA répond</p>
+        <p className="mt-1 text-brand-800/90">
+          L&apos;assistant utilise <strong>uniquement</strong> les informations
+          présentes dans votre{" "}
+          <a href="/dashboard/knowledge" className="underline">
+            base de connaissances
+          </a>
+          . Si une question sort du périmètre, il répond poliment qu&apos;il
+          vérifie avec votre équipe et la conversation bascule en mode humain.
+          Plus votre base est riche, plus l&apos;IA répond directement.
+        </p>
       </div>
 
       <div className="card space-y-4 p-6">
-        <Field label="Prompt système (ce que l'IA sait d'elle-même)">
+        <ToggleRow
+          label="IA activée"
+          desc="Désactivée, les messages entrants ne reçoivent pas de réponse auto."
+          checked={form.enabled}
+          onChange={(v) => set("enabled", v)}
+        />
+        <ToggleRow
+          label="Réponses vocales"
+          desc="L'IA renvoie une note vocale au lieu d'un texte quand c'est pertinent."
+          checked={form.voiceReply}
+          onChange={(v) => set("voiceReply", v)}
+        />
+      </div>
+
+      <div className="card space-y-4 p-6">
+        <Field
+          label="Persona / rôle de l'IA"
+          hint="Décrit en 1-3 phrases qui parle. Les règles strictes (ne pas inventer, basculer vers un humain si besoin) sont ajoutées automatiquement à chaque réponse — pas besoin de les répéter ici."
+        >
           <textarea
-            className="input min-h-[180px] font-mono text-xs"
+            className="input min-h-[160px] font-mono text-xs leading-relaxed"
             value={form.systemPrompt}
             onChange={(e) => set("systemPrompt", e.target.value)}
+            maxLength={8000}
           />
         </Field>
         <div className="grid gap-4 md:grid-cols-2">
@@ -119,41 +124,98 @@ export default function SettingsPage() {
             </select>
           </Field>
         </div>
-        <Field label="Message de transfert à un humain">
+        <Field
+          label="Message envoyé quand l'IA passe la main"
+          hint="Affiché au client quand l'information n'est pas dans la base. Garde-le court et rassurant."
+        >
           <input
             className="input"
             value={form.fallbackMessage}
             onChange={(e) => set("fallbackMessage", e.target.value)}
-          />
-        </Field>
-        <Field label={`Seuil de confiance (${Math.round(form.confidenceFallback * 100)}%)`}>
-          <input
-            type="range"
-            min={0.3}
-            max={0.9}
-            step={0.05}
-            value={form.confidenceFallback}
-            onChange={(e) => set("confidenceFallback", Number(e.target.value))}
-            className="w-full"
+            maxLength={500}
           />
         </Field>
       </div>
 
+      {error && (
+        <p role="alert" className="rounded-md bg-red-50 p-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
       <div className="flex items-center gap-3">
-        <button className="btn-primary" onClick={save} disabled={saving}>
-          {saving ? "Enregistrement..." : "Enregistrer"}
+        <button
+          className="btn-primary"
+          onClick={save}
+          disabled={saving}
+          aria-busy={saving}
+        >
+          {saving ? "Enregistrement…" : "Enregistrer"}
         </button>
-        {saved && <span className="text-sm text-brand-700">✓ Enregistré</span>}
+        {saved && (
+          <span role="status" className="text-sm text-brand-700">
+            ✓ Enregistré
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function ToggleRow({
+  label,
+  desc,
+  checked,
+  onChange,
+}: {
+  label: string;
+  desc: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium">{label}</span>
-      {children}
+    <label className="flex cursor-pointer items-center justify-between gap-4">
+      <div className="min-w-0">
+        <p className="font-medium text-slate-900">{label}</p>
+        <p className="mt-0.5 text-xs text-slate-500">{desc}</p>
+      </div>
+      <span
+        role="switch"
+        aria-checked={checked}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          checked ? "bg-brand-600" : "bg-slate-300"
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+            checked ? "translate-x-5" : "translate-x-0.5"
+          }`}
+        />
+        <input
+          type="checkbox"
+          className="absolute inset-0 cursor-pointer opacity-0"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+      </span>
     </label>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-sm font-medium text-slate-800">{label}</div>
+      {hint && <p className="mb-2 text-xs text-slate-500">{hint}</p>}
+      {children}
+    </div>
   );
 }

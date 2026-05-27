@@ -103,7 +103,7 @@ function TabButton({
       className={clsx(
         "inline-flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors",
         active
-          ? "border-b-2 border-emerald-600 text-emerald-700"
+          ? "border-b-2 border-brand-600 text-brand-700"
           : "border-b-2 border-transparent text-slate-500 hover:text-slate-800",
       )}
     >
@@ -151,11 +151,11 @@ function FileUpload({ onDone }: { onDone: () => void }) {
         className={clsx(
           "flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 text-center transition-colors",
           dragging
-            ? "border-emerald-500 bg-emerald-50"
-            : "border-slate-200 bg-slate-50/60 hover:border-emerald-400 hover:bg-emerald-50/40",
+            ? "border-brand-500 bg-brand-50"
+            : "border-slate-200 bg-slate-50/60 hover:border-brand-400 hover:bg-brand-50/40",
         )}
       >
-        <FileIcon size={28} className="text-emerald-600" />
+        <FileIcon size={28} className="text-brand-600" />
         <p className="mt-3 text-sm font-medium text-slate-800">
           {uploading ? "Envoi en cours…" : "Cliquez ou glissez un fichier ici"}
         </p>
@@ -252,7 +252,7 @@ function TextUpload({ onDone }: { onDone: () => void }) {
         </p>
       )}
       {ok && (
-        <p role="status" className="rounded-md bg-emerald-50 p-2 text-sm text-emerald-800">
+        <p role="status" className="rounded-md bg-brand-50 p-2 text-sm text-brand-800">
           ✓ Ajouté. L&apos;IA va l&apos;indexer dans quelques secondes.
         </p>
       )}
@@ -278,7 +278,7 @@ function StatusLabel({ status }: { status: Doc["status"] }) {
   const map: Record<Doc["status"], { label: string; cls: string }> = {
     pending: { label: "⏳ En attente", cls: "text-slate-500" },
     processing: { label: "⚙️ Traitement…", cls: "text-blue-600" },
-    ready: { label: "✅ Prêt", cls: "text-emerald-600" },
+    ready: { label: "✅ Prêt", cls: "text-brand-600" },
     failed: { label: "❌ Échec", cls: "text-red-600" },
   };
   const v = map[status];

@@ -127,18 +127,22 @@ function publicUser(u: { id: string; email: string; name: string; role: string; 
 }
 
 function defaultPromptFor(industry: string, name: string, locale: string) {
+  // We only define the persona / role here. The strict "answer only from the
+  // verified knowledge base, otherwise hand off to a human" rules are added
+  // by the orchestrator on every call — they don't belong in the user-editable
+  // prompt because we don't want a tenant to accidentally remove them.
   const base: Record<string, string> = {
-    ecommerce: `Tu es l'assistant WhatsApp de la boutique "${name}". Tu aides les clients à trouver des produits, donner les prix, vérifier la disponibilité et organiser la livraison.`,
-    realestate: `Tu es l'assistant WhatsApp de l'agence immobilière "${name}". Tu réponds aux questions sur les biens, organise des visites et collecte les coordonnées.`,
-    services: `Tu es l'assistant WhatsApp de "${name}". Tu présentes les services, donnes les tarifs et prends des rendez-vous.`,
-    other: `Tu es l'assistant WhatsApp de "${name}". Tu réponds aux questions des clients de manière professionnelle.`,
+    ecommerce: `Tu es l'assistant WhatsApp de la boutique "${name}". Tu accueilles les clients chaleureusement et tu réponds à leurs questions sur les produits, les prix, la disponibilité et la livraison à partir des informations fournies par le commerçant.`,
+    realestate: `Tu es l'assistant WhatsApp de l'agence immobilière "${name}". Tu réponds aux questions des prospects sur les biens, les visites et les démarches à partir des informations fournies par l'agence.`,
+    services: `Tu es l'assistant WhatsApp de "${name}". Tu présentes les services et organises les rendez-vous à partir des informations fournies par l'entreprise.`,
+    other: `Tu es l'assistant WhatsApp de "${name}". Tu réponds aux clients de manière professionnelle, à partir des informations fournies par l'entreprise.`,
   };
   const en: Record<string, string> = {
-    ecommerce: `You are the WhatsApp assistant for the online shop "${name}". Help customers find products, give prices, check stock, and organise delivery.`,
-    realestate: `You are the WhatsApp assistant for the real-estate agency "${name}". Answer questions about listings, schedule viewings, collect contact info.`,
-    services: `You are the WhatsApp assistant for "${name}". Describe services, quote prices, book appointments.`,
-    other: `You are the WhatsApp assistant for "${name}". Answer customer questions professionally.`,
+    ecommerce: `You are the WhatsApp assistant for the shop "${name}". Greet customers warmly and answer questions about products, prices, availability and delivery using the information provided by the merchant.`,
+    realestate: `You are the WhatsApp assistant for the real-estate agency "${name}". Answer prospect questions about listings, viewings and procedures from the information provided by the agency.`,
+    services: `You are the WhatsApp assistant for "${name}". Describe services and book appointments using the information provided by the business.`,
+    other: `You are the WhatsApp assistant for "${name}". Answer customer questions professionally using the information provided by the business.`,
   };
   const prompt = (locale.startsWith("en") ? en : base)[industry] ?? base.other;
-  return `${prompt}\n\nRéponds toujours de manière courte, polie et claire. Utilise la langue du client.`;
+  return `${prompt}\n\nRéponds toujours de manière courte (2-4 phrases), polie et claire. Utilise la langue du client.`;
 }
