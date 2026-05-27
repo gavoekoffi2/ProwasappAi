@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import fs from "fs/promises";
 import path from "path";
 import type { Request } from "express";
+import { z } from "zod";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
 import { requireAuth } from "../../middleware/auth";
@@ -100,6 +101,49 @@ knowledgeRouter.post(
     // Fire-and-forget ingest; status will update on the row.
     ingestDocument(doc.id).catch(() => {});
 
+    res.status(202).json(doc);
+  }),
+);
+
+// Raw-text knowledge: the user pastes prose (tariffs, FAQ snippet, policy)
+// directly. We persist it as a virtual text/plain document so the same
+// ingest + RAG pipeline applies.
+const textDocSchema = z.object({
+  name: z.string().min(1).max(200),
+  content: z.string().min(20).max(200_000),
+});
+
+knowledgeRouter.post(
+  "/documents/text",
+  uploadLimiter,
+  asyncHandler(async (req, res) => {
+    const body = textDocSchema.parse(req.body);
+    const sizeBytes = Buffer.byteLength(body.content, "utf8");
+
+    // Same storage quota as file uploads.
+    const agg = await prisma.knowledgeDocument.aggregate({
+      where: { tenantId: req.auth!.tenantId },
+      _sum: { sizeBytes: true },
+    });
+    const usedBytes = Number(agg._sum.sizeBytes ?? 0);
+    const maxBytes = TENANT_STORAGE_MAX_MB * 1024 * 1024;
+    if (usedBytes + sizeBytes > maxBytes) {
+      throw badRequest(
+        `Quota de stockage atteint (${TENANT_STORAGE_MAX_MB} MB). Supprimez des documents.`,
+      );
+    }
+
+    const doc = await prisma.knowledgeDocument.create({
+      data: {
+        tenantId: req.auth!.tenantId,
+        name: body.name,
+        mimeType: "text/plain",
+        sizeBytes,
+        status: "pending",
+      },
+    });
+    await fs.writeFile(path.join(UPLOAD_DIR, `${doc.id}.bin`), body.content, "utf8");
+    ingestDocument(doc.id).catch(() => {});
     res.status(202).json(doc);
   }),
 );
